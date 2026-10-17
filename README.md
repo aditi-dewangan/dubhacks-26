@@ -22,6 +22,22 @@ pnpm smoke               # 17 end-to-end checks of pairing, sessions, relay, log
 pnpm fake-phone          # chat with the kiosk from your terminal, no phone app needed
 ```
 
+Drive the kiosk directly (no Bridge or Agent needed) with the dev command route. The
+kiosk animates the taps and the response is its ack:
+
+```bash
+curl -XPOST localhost:3001/api/dev/command/store42-kiosk1 -H 'content-type: application/json' \
+  -d '{"command":{"type":"add_item","itemId":"cheeseburger","qty":1,"options":{"size":["large"],"remove":["no_onions"]}}}'
+```
+
+Kiosk command rules the Bridge and Agent can rely on:
+
+- `add_item` validates the item and options first and fails fast with a readable error.
+- Any command except a popup answer is refused while a popup is showing.
+- `press` on `btn-pay` or `btn-card-tap` is always refused. Only `start_payment` reaches payment.
+- Nothing can change once the kiosk is on the paying or complete screen.
+- Removing a burger also removes its combo upgrade line.
+
 Phones need HTTPS for the microphone. During development, expose the phone app with
 `ngrok http 5174` and set `PHONE_APP_URL` to the ngrok URL so the QR code points there.
 

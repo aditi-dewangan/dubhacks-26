@@ -14,7 +14,8 @@
     "@kiosk-access/shared": "workspace:*",
     "qrcode.react": "^4.1.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "zustand": "^4.5.7"
   },
   "devDependencies": {
     "@types/react": "^18.3.0",

@@ -1,6 +1,8 @@
+import { randomUUID } from "node:crypto";
 import { Router } from "express";
-import type { CreateSessionRequest } from "@kiosk-access/shared";
+import type { CommandAck, CreateSessionRequest, KioskCommand } from "@kiosk-access/shared";
 import { config } from "./config.ts";
+import { onKioskAck, sendToKiosk } from "./realtime/index.ts";
 import { getEvents } from "./realtime/log.ts";
 import { currentCode } from "./realtime/pairing.ts";
 import { createSession } from "./realtime/sessions.ts";
@@ -38,6 +40,35 @@ if (config.devRoutes) {
       return;
     }
     res.json(code);
+  });
+
+  // Send one command to a kiosk and wait for its ack. Lets anyone drive the kiosk
+  // before the Bridge and Agent exist:  curl -XPOST .../api/dev/command/store42-kiosk1
+  //   -H 'content-type: application/json' -d '{"command":{"type":"press","buttonId":"btn-start"}}'
+  routes.post("/api/dev/command/:kioskId", async (req, res) => {
+    const k = kiosks.get(req.params.kioskId);
+    const command = (req.body as { command?: KioskCommand } | undefined)?.command;
+    if (!k?.online) {
+      res.status(503).json({ error: "kiosk_offline" });
+      return;
+    }
+    if (!command || typeof command.type !== "string") {
+      res.status(400).json({ error: "Body must be { command: KioskCommand }" });
+      return;
+    }
+    const cmdId = randomUUID();
+    const ack = await new Promise<CommandAck | null>((resolve) => {
+      const timer = setTimeout(() => { off(); resolve(null); }, 30_000);
+      const off = onKioskAck((a) => {
+        if (a.cmdId !== cmdId) return;
+        clearTimeout(timer);
+        off();
+        resolve(a);
+      });
+      sendToKiosk(k.kioskId, { cmdId, sessionId: k.sessionId ?? "dev", command });
+    });
+    if (!ack) res.status(504).json({ error: "The kiosk didn't respond" });
+    else res.json(ack);
   });
 
   routes.get("/api/dev/kiosks", (_req, res) => {
