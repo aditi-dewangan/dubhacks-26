@@ -1,5 +1,4 @@
 {
-  "_note": "Starter menu so the kiosk and agent can start. Shruti (Bridge) owns this file and will refine it.",
   "taxRate": 0.101,
   "categories": [
     { "id": "burgers", "name": "Burgers" },
@@ -42,7 +41,7 @@
       "optionGroups": []
     },
     {
-      "id": "fries", "categoryId": "sides", "name": "Fries", "price": 2.79,
+      "id": "fries", "categoryId": "sides", "name": "French Fries", "price": 2.79,
       "description": "Salted shoestring fries", "tags": ["vegetarian", "vegan"],
       "optionGroups": [
         { "id": "size", "name": "Size", "type": "single", "required": true,
@@ -97,7 +96,7 @@
     },
     {
       "id": "combo_upgrade", "categoryId": "sides", "name": "Combo upgrade (medium fries + drink)", "price": 2.0,
-      "description": "Added through the combo popup", "tags": [], "hidden": true,
+      "description": "Medium fries and a drink, added through the combo popup after a burger", "tags": [], "hidden": true,
       "optionGroups": [
         { "id": "drink", "name": "Combo drink", "type": "single", "required": true,
           "choices": [{ "id": "cola", "name": "Cola", "priceDelta": 0 }, { "id": "diet_cola", "name": "Diet cola", "priceDelta": 0 }, { "id": "lemon_lime", "name": "Lemon-lime", "priceDelta": 0 }, { "id": "iced_tea", "name": "Iced tea", "priceDelta": 0 }] }
