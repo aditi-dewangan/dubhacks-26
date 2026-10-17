@@ -354,5 +354,5 @@ export function toKioskState(m: KioskModel, kioskId: string, sessionActive: bool
   }
 
   const popup = m.popup ? { id: m.popup.id, text: m.popup.text, buttons: m.popup.buttons } : undefined;
-  return { kioskId, screen: m.screen, title, buttons, popup, cart, orderNumber: m.orderNumber, sessionActive };
+  return { kioskId, kind: "food", screen: m.screen, title, buttons, popup, cart, orderNumber: m.orderNumber, sessionActive };
 }
