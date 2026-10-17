@@ -10,6 +10,10 @@ import { kiosks } from "./realtime/store.ts";
 
 export const routes = Router();
 
+routes.get("/", (_req, res) => {
+  res.json({ ok: true, service: "kiosk-access-server" });
+});
+
 routes.get("/health", (_req, res) => {
   res.json({ ok: true, kiosksOnline: [...kiosks.values()].filter((k) => k.online).length });
 });
