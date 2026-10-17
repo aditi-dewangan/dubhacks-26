@@ -8,7 +8,8 @@
     "start": "node --env-file-if-exists=../../.env --import tsx src/index.ts",
     "smoke": "node --env-file-if-exists=../../.env --import tsx scripts/smoke.ts",
     "fake-phone": "node --env-file-if-exists=../../.env --import tsx scripts/fake-phone.ts",
-    "typecheck": "tsc -p ."
+    "typecheck": "tsc -p .",
+    "test:bridge": "vitest run src/bridge"
   },
   "dependencies": {
     "@kiosk-access/shared": "workspace:*",
@@ -22,6 +23,7 @@
     "@types/express": "^4.17.21",
     "@types/node": "^22.0.0",
     "socket.io-client": "^4.8.0",
-    "typescript": "^5.6.0"
+    "typescript": "^5.6.0",
+    "vitest": "^3.2.7"
   }
 }

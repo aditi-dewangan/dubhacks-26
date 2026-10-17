@@ -10,6 +10,7 @@
     "dev:kiosk": "pnpm --filter @kiosk-access/kiosk dev",
     "smoke": "pnpm --filter @kiosk-access/server smoke",
     "fake-phone": "pnpm --filter @kiosk-access/server fake-phone",
-    "typecheck": "pnpm -r typecheck"
+    "typecheck": "pnpm -r typecheck",
+    "test:bridge": "pnpm --filter @kiosk-access/server test:bridge"
   }
 }
