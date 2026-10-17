@@ -16,7 +16,7 @@ function response(text = "The cheeseburger starts at six forty-nine.") {
 
 test("prompt menu is sourced from shared data, including prices, required choices and hidden status", () => {
   const prompt = buildSystemPrompt();
-  const embedded = JSON.parse(prompt.split("MENU_JSON:\n")[1]);
+  const embedded = JSON.parse(prompt.split("MENU_JSON:\n")[1].split("\n\nVISIBLE_ITEMS_AND_REQUIRED_CHOICES:")[0]);
   assert.equal(embedded.taxRate, menu.taxRate);
   for (const item of menu.items) {
     const grounded = embedded.items.find((entry: { id: string }) => entry.id === item.id);
@@ -27,7 +27,7 @@ test("prompt menu is sourced from shared data, including prices, required choice
   // A menu edit must reach the model without a second hardcoded copy.
   const edited = structuredClone(menu);
   edited.items[0].price = 12.34;
-  assert.equal(JSON.parse(buildSystemPrompt(edited).split("MENU_JSON:\n")[1]).items[0].price, 12.34);
+  assert.equal(JSON.parse(buildSystemPrompt(edited).split("MENU_JSON:\n")[1].split("\n\nVISIBLE_ITEMS_AND_REQUIRED_CHOICES:")[0]).items[0].price, 12.34);
 });
 
 test("context uses actual cart totals and excludes identity/extra session fields", () => {
@@ -50,7 +50,7 @@ test("SDK sends the grounded prompt, current state and customer text with no act
       const body = JSON.parse(String(init?.body));
       assert.match(JSON.stringify(body.systemInstruction), /cheeseburger/);
       assert.match(JSON.stringify(body.contents), /What burgers do you have/);
-      assert.match(JSON.stringify(body.contents), /CURRENT_KIOSK_STATE_JSON/);
+      assert.match(JSON.stringify(body.systemInstruction), /CURRENT_KIOSK_STATE_JSON/);
       assert.equal(body.tools, undefined);
       assert.equal(body.generationConfig.maxOutputTokens, 512);
       return new Response(JSON.stringify(response()), { status: 200, headers: { "content-type": "application/json" } });
@@ -111,14 +111,15 @@ test("deadline aborts a stalled provider and releases the caller", async () => {
 });
 
 test("Gemini replies preserve the phone response contract without opening checkout", async () => {
+  const session = { kioskId: "a", ended: false, history: [], pendingCheckout: null };
   const agent = createAgent({
-    getSession: () => ({ kioskId: "a", ended: false }),
+    getSession: () => session,
     getKioskState: () => fixtures.menuState,
     sendAgentMessage: () => assert.fail("User replies must be returned"),
-    generateReply: async ({ text, state }) => {
-      assert.equal(text, "What burgers?");
+    generateTurn: async ({ contents, state }) => {
+      assert.equal(contents[0].parts?.[0].text, "What burgers?");
       assert.equal(state, fixtures.menuState);
-      return "The cheeseburger is six forty-nine.";
+      return { role: "model", parts: [{ text: "The cheeseburger is six forty-nine." }] };
     },
   });
   assert.deepEqual(await agent.handleUserMessage("a", "What burgers?"), {
@@ -127,21 +128,22 @@ test("Gemini replies preserve the phone response contract without opening checko
 });
 
 test("late provider replies are discarded after the session ends", async () => {
-  const session = { kioskId: "a", ended: false };
+  const session = { kioskId: "a", ended: false, history: [], pendingCheckout: null };
   const agent = createAgent({
     getSession: () => session, getKioskState: () => fixtures.menuState,
     sendAgentMessage: () => assert.fail("Must not push"),
-    generateReply: async () => { session.ended = true; return "Stale reply"; },
+    generateTurn: async () => { session.ended = true; return { role: "model", parts: [{ text: "Stale reply" }] }; },
   });
   assert.match((await agent.handleUserMessage("a", "hello")).text, /session has ended/);
 });
 
 test("provider failure returns a usable reply and logs no raw SDK errors", async () => {
   const logged: unknown[] = [];
+  const session = { kioskId: "a", ended: false, history: [], pendingCheckout: null };
   const agent = createAgent({
-    getSession: () => ({ kioskId: "a", ended: false }), getKioskState: () => null,
+    getSession: () => session, getKioskState: () => null,
     sendAgentMessage: () => assert.fail("Must not push"),
-    generateReply: async () => { throw new Error(`secret ${config.apiKey}`); },
+    generateTurn: async () => { throw new Error(`secret ${config.apiKey}`); },
     reportFailure: (...args) => { logged.push(args); },
   });
   const reply = await agent.handleUserMessage("a", "hello");

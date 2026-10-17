@@ -10,7 +10,8 @@
     "fake-phone": "node --env-file-if-exists=../../.env --import tsx scripts/fake-phone.ts",
     "typecheck": "tsc -p .",
     "test:agent": "node --import tsx --test src/agent/*.test.ts",
-    "agent:check": "node --env-file-if-exists=../../.env --import tsx scripts/agent-check.ts"
+    "agent:check": "node --env-file-if-exists=../../.env --import tsx scripts/agent-check.ts",
+    "agent:eval": "node --env-file-if-exists=../../.env --import tsx scripts/agent-eval.ts"
   },
   "dependencies": {
     "@google/genai": "^2.30.0",

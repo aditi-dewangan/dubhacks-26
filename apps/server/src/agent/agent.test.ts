@@ -7,8 +7,8 @@ import { agentTools, dispatchAgentTool } from "./tools.ts";
 
 function harness() {
   const sessions = new Map([
-    ["a", { kioskId: "kiosk-a", ended: false }],
-    ["b", { kioskId: "kiosk-b", ended: false }],
+    ["a", { kioskId: "kiosk-a", ended: false, history: [], pendingCheckout: null }],
+    ["b", { kioskId: "kiosk-b", ended: false, history: [], pendingCheckout: null }],
   ]);
   const pushed: { sessionId: string; message: AgentMessage }[] = [];
   const reads: string[] = [];
@@ -55,8 +55,9 @@ test("proactive messages are pushed only to the requested active session", async
 });
 
 test("an active session can respond before the kiosk has published state", async () => {
+  const session = { kioskId: "k", ended: false, history: [], pendingCheckout: null };
   const agent = createAgent({
-    getSession: () => ({ kioskId: "k", ended: false }),
+    getSession: () => session,
     getKioskState: () => null,
     sendAgentMessage: () => assert.fail("User replies must be returned"),
   });
