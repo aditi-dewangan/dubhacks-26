@@ -139,8 +139,7 @@ h1, h2, h3, p { margin: 0; }
 }
 .qr-frame svg { width: 100%; height: 100%; }
 .qr-placeholder { color: var(--muted); }
-.access-title { font-weight: 800; font-size: 1.35em; margin-bottom: 0.3em; }
-.access-body { color: var(--muted); line-height: 1.4; }
+.access-body { color: var(--muted); line-height: 1.4; font-size: 1.05em; max-width: 17em; margin: 0 auto; }
 
 /* ---------- menu ---------- */
 
@@ -454,3 +453,96 @@ h1, h2, h3, p { margin: 0; }
   .welcome h1 { font-size: 3.4em; }
   .page-layout { grid-template-columns: minmax(0, 1fr) 20em; padding: 1.6em 2em; }
 }
+
+/* ======================= clinic / cinema / transit kiosks ======================= */
+
+.gen-page {
+  padding: 2em 3em;
+  overflow-y: auto;
+  min-height: 0;
+  display: flex; flex-direction: column; gap: 0.9em;
+}
+.gen-page.narrow { max-width: 44em; width: 100%; margin: 0 auto; }
+.gen-page .section-sub { margin-bottom: 0.4em; }
+.gen-actions { display: flex; gap: 0.8em; margin-top: auto; padding-top: 1em; }
+.gen-actions .btn-red, .gen-actions .btn-grey { padding: 0.9em 1.6em; }
+
+.field { display: flex; flex-direction: column; gap: 0.4em; font-weight: 700; }
+.field input {
+  font: inherit; font-weight: 500; font-size: 1.3em;
+  padding: 0.7em 0.9em;
+  border: 2px solid var(--line); border-radius: 0.7em;
+  background: var(--white); color: var(--text);
+}
+.field input:focus { outline: none; border-color: var(--red); box-shadow: 0 0 0 3px color-mix(in srgb, var(--red) 20%, transparent); }
+.field-hint { color: var(--bad); font-weight: 600; }
+
+.info-card {
+  border: 1px solid var(--line); border-radius: 1.1em;
+  padding: 1.3em 1.5em;
+  display: flex; flex-direction: column; gap: 0.45em;
+  background: var(--soft);
+  font-size: 1.05em;
+}
+.info-big { font-size: 1.35em; font-weight: 800; }
+.notice { background: #fff4d6; border-radius: 0.7em; padding: 0.7em 1em; font-weight: 600; margin-top: 0.6em; }
+
+.yn-group { border: none; padding: 0; margin: 0.3em 0; }
+.yn-group legend { font-weight: 700; font-size: 1.1em; margin-bottom: 0.6em; padding: 0; }
+.yn-buttons, .choice-row { display: flex; gap: 0.6em; flex-wrap: wrap; }
+.choice {
+  border: 2px solid var(--line); background: var(--white);
+  border-radius: 999px; padding: 0.7em 1.4em;
+  font-weight: 700;
+}
+.choice:hover { border-color: #cfcfcf; }
+.choice.on { background: var(--text); border-color: var(--text); color: var(--white); }
+.yn-buttons .choice { min-width: 6em; }
+
+.qty-row { display: flex; justify-content: space-between; align-items: center; padding: 0.9em 0; border-bottom: 1px solid var(--line); }
+.total-line { font-size: 1.2em; padding-top: 0.4em; }
+
+/* cinema */
+.movie-list { display: flex; flex-direction: column; gap: 1em; }
+.movie-row { display: flex; gap: 1.2em; align-items: center; padding: 1em; border: 1px solid var(--line); border-radius: 1.1em; }
+.poster {
+  flex: none; border-radius: 0.3em;
+  background: linear-gradient(160deg, color-mix(in srgb, var(--red) 75%, black), var(--red));
+  display: grid; place-items: center; font-size: 2em;
+}
+.poster { width: 2.3em; height: 3.2em; }
+.movie-main { display: flex; flex-direction: column; gap: 0.7em; }
+.movie-title { font-weight: 800; font-size: 1.15em; }
+.time-chips { display: flex; gap: 0.6em; flex-wrap: wrap; }
+.seats-page { align-items: center; }
+.seats-page .section-title, .seats-page .section-sub { align-self: stretch; }
+.screen-bar {
+  width: min(32em, 90%); text-align: center;
+  border-top: 4px solid var(--red); border-radius: 50% 50% 0 0 / 1em 1em 0 0;
+  padding-top: 0.4em; color: var(--muted); font-weight: 700; letter-spacing: 0.3em; font-size: 0.8em;
+}
+.seat-grid { display: flex; flex-direction: column; gap: 0.45em; margin: 0.6em 0; }
+.seat-row { display: flex; gap: 0.4em; align-items: center; }
+.row-label { width: 1.6em; font-weight: 800; color: var(--muted); text-align: center; }
+.seat {
+  width: 2.5em; height: 2.3em;
+  border: 2px solid #cfcfcf; border-radius: 0.5em 0.5em 0.3em 0.3em;
+  background: var(--white); font-size: 0.85em; font-weight: 700;
+}
+.seat.aisle { margin-right: 1.4em; }
+.seat:disabled { background: var(--soft-2); border-color: var(--soft-2); color: #b5b5b5; opacity: 1; }
+.seat.on { background: var(--red); border-color: var(--red); color: var(--white); }
+.seats-page .gen-actions { align-self: stretch; }
+
+/* transit */
+.station-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(15em, 1fr)); gap: 0.9em; }
+.station {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 0.25em;
+  text-align: left;
+  border: 1px solid var(--line); border-radius: 1em;
+  background: var(--white);
+  padding: 1.1em 1.2em;
+  border-left: 0.45em solid var(--red);
+}
+.station:hover { background: var(--soft); }
+.station-name { font-weight: 800; font-size: 1.15em; }

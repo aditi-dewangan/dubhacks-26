@@ -1,13 +1,20 @@
 // Test harness: the bridge wired to an in-memory realtime layer and the fake kiosk.
 
-import type { AgentMessage, CommandAck, CommandEnvelope, KioskState, SessionEndReason } from "@kiosk-access/shared";
+import type { AgentMessage, CommandAck, CommandEnvelope, KioskCommand, KioskState, SessionEndReason } from "@kiosk-access/shared";
 import { FakeKiosk } from "@kiosk-access/sdk/fake";
 import { createBridge, type BridgeDeps, type BridgeSession } from "./bridge.ts";
 
-export function setup(opts: { autoAck?: boolean; timeoutMs?: number; online?: boolean } = {}) {
+/** Anything that runs commands and reports its screen, like the fake food kiosk. */
+export interface KioskLike {
+  run(command: KioskCommand): Omit<CommandAck, "cmdId">;
+  state(): KioskState;
+}
+
+export function setup<K extends KioskLike = FakeKiosk>(
+  opts: { autoAck?: boolean; timeoutMs?: number; online?: boolean; kiosk?: K } = {},
+) {
   const autoAck = opts.autoAck ?? true;
-  const kiosk = new FakeKiosk("k1");
-  kiosk.sessionActive = true;
+  const kiosk = (opts.kiosk ?? Object.assign(new FakeKiosk("k1"), { sessionActive: true })) as K;
   let lastState: KioskState = kiosk.state();
 
   const ackHandlers: ((ack: CommandAck, kioskId: string) => void)[] = [];

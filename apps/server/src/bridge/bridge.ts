@@ -12,18 +12,20 @@ import {
   type LoggedEventType,
   type SessionEndReason,
 } from "@kiosk-access/shared";
-import { CommandError, createCommandSender, KIOSK_NO_RESPONSE, type SafeCommand } from "./commands.ts";
-import { isAffirmative, sameCart } from "./gate.ts";
+import { CommandError, createCommandSender, FINAL_BUTTONS, KIOSK_NO_RESPONSE, type FinalAction, type SafeCommand } from "./commands.ts";
+import { isAffirmative, sameReview, snapshotOf, type ReviewSnapshot } from "./gate.ts";
 import {
   cartTotalSentence,
   describeCart,
   describeLine,
   describePopup,
+  describeScreen,
   popupSentence,
   spokenDelta,
   spokenMoney,
 } from "./spoken.ts";
 import {
+  normalize,
   resolveCategory,
   resolveLine,
   resolveOrderableItem,
@@ -57,7 +59,9 @@ export interface BridgeDeps {
 
 interface PendingCheckout {
   checkoutId: string;
-  snapshot: Cart;
+  snapshot: ReviewSnapshot;
+  /** start_payment, or submit for a check-in (clinic). */
+  action: FinalAction;
 }
 
 type Input = Record<string, unknown>;
@@ -71,7 +75,17 @@ const TOOLS = [
   "respond_to_popup",
   "request_checkout",
   "cancel_order",
+  "press_button",
+  "type_text",
 ] as const;
+
+/** Tools that only make sense on the food kiosk, which has a menu and high-level cart commands. */
+const FOOD_ONLY = new Set(["get_menu", "add_item", "update_item", "remove_item"]);
+
+const kindOf = (state: KioskState) => state.kind ?? "food";
+
+/** Fields whose values are personal. Their text is kept out of tool replies and the bridge's log. */
+const SENSITIVE_FIELD = /birth|dob|insurance|member|ssn|social|phone|address/i;
 
 const NOT_CONFIRMED = "Payment has not started.";
 
@@ -88,10 +102,10 @@ export function createBridge(deps: BridgeDeps) {
 
   const checkouts = new Map<string, PendingCheckout>(); // sessionId -> pending checkout
 
-  function openGate(session: BridgeSession, cart: Cart): PendingCheckout {
-    const pending = { checkoutId: newId(), snapshot: structuredClone(cart) };
+  function openGate(session: BridgeSession, state: KioskState, action: FinalAction): PendingCheckout {
+    const pending = { checkoutId: newId(), snapshot: snapshotOf(state), action };
     checkouts.set(session.sessionId, pending);
-    session.pendingCheckout = pending.snapshot;
+    session.pendingCheckout = pending.snapshot.cart;
     return pending;
   }
 
@@ -102,8 +116,9 @@ export function createBridge(deps: BridgeDeps) {
   }
 
   /**
-   * The ONLY path that sends start_payment. It needs the current checkoutId, and the
-   * kiosk's cart must still match the snapshot read back to the customer, line by line.
+   * The ONLY path that sends start_payment or completes a check-in. It needs the current
+   * checkoutId, and what's on the kiosk (cart line by line, fields, info) must still match
+   * what was read back to the customer.
    */
   async function confirmCheckout(sessionId: string, checkoutId: string): Promise<AgentMessage> {
     const reply = (text: string): AgentMessage => ({ text, awaitingConfirmation: false });
@@ -111,26 +126,34 @@ export function createBridge(deps: BridgeDeps) {
     const pending = checkouts.get(sessionId);
     if (!session || session.ended) return reply("This session has ended.");
     if (!pending) return reply("There's no order waiting to be confirmed. Tell me when you're ready to check out.");
+    const what = pending.action === "submit" ? "completed the check-in" : "started payment";
+    const noun = pending.action === "submit" ? "check-in" : "order";
     if (pending.checkoutId !== checkoutId) {
       clearGate(sessionId);
-      return reply("That confirmation was for an earlier version of your order, so I haven't started payment. Let's review it again.");
+      return reply(`That confirmation was for an earlier version of your ${noun}, so I haven't ${what}. Let's review it again.`);
     }
 
     clearGate(sessionId); // single use, whatever happens next
     const state = deps.getKioskState(session.kioskId);
-    if (!state || !sameCart(state.cart, pending.snapshot)) {
-      return reply(`Your order changed since I read it back, so I haven't started payment. ${state ? describeCart(state.cart) : ""}`.trim());
+    if (!state || !sameReview(pending.snapshot, state)) {
+      const now = state ? (kindOf(state) === "food" ? describeCart(state.cart) : "") : "";
+      return reply(`Your ${noun} changed since I read it back, so I haven't ${what}. ${now}`.trim());
     }
-    if (state.popup) return reply(`A popup is showing on the kiosk, so I haven't started payment. ${describePopup(state.popup)}`);
+    if (state.popup) return reply(`A popup is showing on the kiosk, so I haven't ${what}. ${describePopup(state.popup)}`);
 
-    deps.logEvent("checkout_confirmed", { kioskId: session.kioskId, sessionId, data: { checkoutId, total: state.cart.total } });
+    deps.logEvent("checkout_confirmed", {
+      kioskId: session.kioskId, sessionId, data: { checkoutId, action: pending.action, total: state.cart.total },
+    });
     try {
-      const ack = await commands.sendStartPayment(session.kioskId, sessionId);
-      if (!ack.ok) return reply(`The kiosk couldn't start payment: ${ack.error ?? "unknown error"}`);
+      const ack = await commands.sendFinalAction(session.kioskId, sessionId, pending.action);
+      if (!ack.ok) return reply(`The kiosk couldn't finish: ${ack.error ?? "unknown error"}`);
+      if (pending.action === "submit") {
+        return reply(`You're checked in.${ack.state.orderNumber ? ` Your number is ${ack.state.orderNumber}.` : ""} Please have a seat; you'll be called.`);
+      }
       return reply(`Payment started. Please tap your card on the reader below the screen. The total is ${spokenMoney(ack.state.cart.total)}.`);
     } catch (err) {
       const why = err instanceof CommandError ? err.message : KIOSK_NO_RESPONSE;
-      return reply(`${why} Payment hasn't started.`);
+      return reply(`${why} I haven't ${what}.`);
     }
   }
 
@@ -140,7 +163,7 @@ export function createBridge(deps: BridgeDeps) {
     if (!session || session.ended) return;
     if (!confirmed) {
       clearGate(sessionId);
-      deps.sendAgentMessage(sessionId, { text: "Okay, payment hasn't started. What would you like to change?", awaitingConfirmation: false });
+      deps.sendAgentMessage(sessionId, { text: "Okay, nothing has been submitted. What would you like to change?", awaitingConfirmation: false });
       return;
     }
     // The current contract's user:confirm carries no checkoutId, so the phone confirms the latest one.
@@ -202,6 +225,10 @@ export function createBridge(deps: BridgeDeps) {
     },
 
     async get_kiosk_state(session, state) {
+      if (kindOf(state) !== "food") {
+        const gate = checkouts.has(session.sessionId) ? " Waiting for the customer to confirm." : "";
+        return `${describeScreen(state, FINAL_BUTTONS)}${gate}`;
+      }
       const screen = `The kiosk is on the ${state.screen} screen.`;
       const cart = state.cart.lines.length ? `Order: ${describeCart(state.cart, true)}` : "The order is empty.";
       const popup = state.popup ? ` ${describePopup(state.popup)}` : "";
@@ -290,17 +317,66 @@ export function createBridge(deps: BridgeDeps) {
       return `Done, nothing was added. ${cartTotalSentence(ack.state.cart)}`;
     },
 
+    async press_button(session, state, input) {
+      if (state.screen === "paying") return "Payment is in progress. The customer taps their card on the reader.";
+      const ref = typeof input.buttonId === "string" ? input.buttonId.trim() : "";
+      if (!ref) return "Which button? Call get_kiosk_state to see the buttons on screen.";
+      const all = [...(state.popup?.buttons.map((b) => ({ ...b, enabled: true })) ?? []), ...state.buttons];
+      const r = normalize(ref);
+      const button = all.find((b) => b.id === ref) ?? all.find((b) => normalize(b.label) === r);
+      if (!button) {
+        const ids = all.filter((b) => b.enabled && !FINAL_BUTTONS[b.id]).map((b) => `${b.id} ("${b.label}")`);
+        return `No "${ref}" button on screen. Buttons: ${ids.join(", ") || "none"}.`;
+      }
+      if (FINAL_BUTTONS[button.id]) return FINAL_BUTTONS[button.id];
+      if (!button.enabled) return `"${button.label}" can't be pressed yet. Something on screen still needs an answer.`;
+
+      clearGate(session.sessionId);
+      const ack = await run(session.sessionId, { type: "press", buttonId: button.id });
+      if (!ack.ok) return `The kiosk couldn't press it: ${ack.error}`;
+      return `Pressed "${button.label}". ${kindOf(ack.state) === "food" ? cartTotalSentence(ack.state.cart) + popupSentence(ack.state) : describeScreen(ack.state, FINAL_BUTTONS)}`;
+    },
+
+    async type_text(session, state, input) {
+      if (state.screen === "paying") return "Payment is in progress, so nothing can be typed now.";
+      const fields = state.fields ?? [];
+      if (!fields.length) return "There are no text fields on this screen.";
+      const ref = typeof input.fieldId === "string" ? input.fieldId.trim() : "";
+      const field = fields.find((f) => f.id === ref) ?? fields.find((f) => normalize(f.label) === normalize(ref));
+      if (!field) return `No "${ref}" field on screen. Fields: ${fields.map((f) => `${f.id} ("${f.label}")`).join(", ")}.`;
+      if (typeof input.text !== "string" || !input.text.trim()) return `What should go in "${field.label}"?`;
+      if (input.text.length > 80) return "That's too long for this field.";
+
+      clearGate(session.sessionId);
+      const ack = await run(session.sessionId, { type: "type_text", fieldId: field.id, text: input.text });
+      if (!ack.ok) return `The kiosk couldn't type it: ${ack.error}`;
+      const shown = SENSITIVE_FIELD.test(`${field.id} ${field.label}`) ? "" : ` "${input.text}"`;
+      return `Typed${shown} into ${field.label}. ${describeScreen(ack.state, FINAL_BUTTONS)}`;
+    },
+
     async request_checkout(session, state) {
       const blocked = blockedChange(state);
       if (blocked) return blocked;
-      if (!state.cart.lines.length) return "The order is empty, so there's nothing to check out.";
-      const pending = openGate(session, state.cart);
+      const food = kindOf(state) === "food";
+      const has = (id: string) => state.buttons.some((b) => b.id === id && b.enabled);
+      let action: FinalAction;
+      if (!food && has("btn-submit")) action = "submit";
+      else if (!state.cart.lines.length) return food ? "The order is empty, so there's nothing to check out." : "There's nothing to confirm yet. Finish the steps on screen first.";
+      else if (!food && !has("btn-pay")) return "Go to the review screen first (it shows the Pay button), then call request_checkout.";
+      else action = "start_payment";
+
+      const pending = openGate(session, state, action);
       deps.logEvent("checkout_requested", {
         kioskId: session.kioskId,
         sessionId: session.sessionId,
-        data: { checkoutId: pending.checkoutId, total: state.cart.total, lines: state.cart.lines.length },
+        data: { checkoutId: pending.checkoutId, action, total: state.cart.total, lines: state.cart.lines.length },
       });
-      return `Read this back: ${describeCart(state.cart)} Then ask the customer to confirm by pressing Confirm or saying yes. ${NOT_CONFIRMED} You cannot start it.`;
+      const confirm = "Then ask the customer to confirm by pressing Confirm or saying yes.";
+      if (action === "submit") {
+        return `Read this back: ${state.info?.join("; ") ?? state.title}. ${confirm} The check-in is not complete yet, and you cannot complete it.`;
+      }
+      const details = !food && state.info?.length ? ` Also on screen: ${state.info.join("; ")}.` : "";
+      return `Read this back: ${describeCart(state.cart)}${details} ${confirm} ${NOT_CONFIRMED} You cannot start it.`;
     },
 
     async cancel_order(session) {
@@ -323,14 +399,24 @@ export function createBridge(deps: BridgeDeps) {
       const state = deps.getKioskState(session.kioskId);
       const args = input && typeof input === "object" && !Array.isArray(input) ? (input as Input) : {};
       try {
-        result = state ? await tool(session, state, args) : "I can't see the kiosk right now. It may be offline.";
+        if (!state) result = "I can't see the kiosk right now. It may be offline.";
+        else if (FOOD_ONLY.has(name) && kindOf(state) !== "food") {
+          result = `This is a ${kindOf(state)} kiosk with no menu, so ${name} doesn't apply. Call get_kiosk_state to read the screen, then use press_button and type_text.`;
+        } else result = await tool(session, state, args);
       } catch (err) {
         result = err instanceof CommandError ? err.message : "Something went wrong talking to the kiosk.";
         if (!(err instanceof CommandError)) console.error("[bridge] tool failed", name, err);
       }
     }
-    deps.logEvent("tool_call", { kioskId: session.kioskId, sessionId, data: { name, input, result } });
+    deps.logEvent("tool_call", { kioskId: session.kioskId, sessionId, data: { name, input: redact(name, input), result } });
     return result;
+  }
+
+  /** Keeps personal values (date of birth, insurance) out of the event log. */
+  function redact(name: string, input: unknown): unknown {
+    if (name !== "type_text" || !input || typeof input !== "object") return input;
+    const { fieldId, text } = input as { fieldId?: unknown; text?: unknown };
+    return SENSITIVE_FIELD.test(String(fieldId ?? "")) ? { fieldId, text: "[redacted]" } : { fieldId, text };
   }
 
   /** True while a checkout is waiting for the customer's confirm. The agent sets awaitingConfirmation from it. */
@@ -353,7 +439,7 @@ export function createBridge(deps: BridgeDeps) {
     if (!session || session.ended) return;
 
     const pending = checkouts.get(session.sessionId);
-    if (pending && !sameCart(next.cart, pending.snapshot)) clearGate(session.sessionId);
+    if (pending && !sameReview(pending.snapshot, next)) clearGate(session.sessionId);
 
     const notify = (note: string) =>
       deps.handleKioskEvent(session.sessionId, note).catch((err) => console.error("[bridge] handleKioskEvent failed", err));
@@ -363,7 +449,9 @@ export function createBridge(deps: BridgeDeps) {
       notify(`A popup appeared on the kiosk: "${next.popup.text}" Buttons: ${next.popup.buttons.map((b) => `${b.id} ("${b.label}")`).join(", ")}.`);
     }
     if (next.screen === "complete" && next.orderNumber && prev?.screen !== "complete") {
-      notify(`Payment went through. The order number is ${next.orderNumber}.`);
+      notify(kindOf(next) === "clinic"
+        ? `Check-in is complete. The customer's number is ${next.orderNumber}.`
+        : `Payment went through. The order number is ${next.orderNumber}.`);
     }
   });
 
