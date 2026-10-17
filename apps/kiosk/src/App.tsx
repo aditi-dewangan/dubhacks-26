@@ -10,7 +10,7 @@ import {
   CartScreen,
   CheckoutScreen,
   CompleteScreen,
-  ItemScreen,
+  ItemModal,
   MenuScreen,
   PayingScreen,
   Popup,
@@ -73,82 +73,83 @@ export function App() {
   }, [sessionActive]);
 
   useInactivityReset(sessionActive);
+  const editingFromCart = useKiosk((s) => Boolean(s.draft?.editingLineId));
 
   return (
-    <div className="stage">
-      <main className={`kiosk ${sessionActive ? "in-session" : ""}`} aria-label="Self-order kiosk">
-        <header className="kiosk-header">
-          <div className="brand">
-            <span className="brand-mark" aria-hidden="true">HB</span>
+    <main className={`kiosk ${sessionActive ? "in-session" : ""}`} aria-label="Self-order kiosk">
+      {sessionActive && (
+        <div className="access-banner" role="status">
+          <span className="pulse" aria-hidden="true" />
+          <strong>Accessibility mode</strong>
+          <span className="access-banner-sub">A customer is ordering from their phone. Touch is paused.</span>
+          <button className="end-btn" type="button" onClick={() => access.endSession()}>
+            End session
+          </button>
+        </div>
+      )}
+      <header className="topbar">
+        <div className="brand">
+          <span className="brand-mark" aria-hidden="true">HB</span>
+          <span>
             <span className="brand-name">Harbor Burger</span>
-          </div>
-        </header>
+            <span className="brand-meta">Pickup · Order at the kiosk</span>
+          </span>
+        </div>
+        <div className={`status status-${status}`}>
+          <span className="status-dot" aria-hidden="true" />
+          {kioskId} · {status}
+        </div>
+      </header>
 
+      <div className="content">
         {screen === "welcome" && <WelcomeScreen qrUrl={sessionActive ? null : qrUrl} status={status} />}
-        {screen === "menu" && <MenuScreen />}
-        {screen === "item" && <ItemScreen />}
-        {screen === "cart" && <CartScreen />}
+        {(screen === "menu" || (screen === "item" && !editingFromCart)) && <MenuScreen />}
+        {(screen === "cart" || (screen === "item" && editingFromCart)) && <CartScreen />}
         {screen === "checkout" && <CheckoutScreen />}
         {screen === "paying" && <PayingScreen />}
         {screen === "complete" && <CompleteScreen />}
+        {screen === "item" && <ItemModal />}
         <Popup />
+      </div>
 
-        {sessionActive && (
-          <>
-            {/* Blocks touch on everything except the card reader; the assistant's taps are programmatic. */}
-            <div className="touch-blocker" aria-hidden="true" />
-            <div className="session-banner" role="status">
-              <span className="pulse" aria-hidden="true" />
-              <div className="session-copy">
-                <p className="session-title">Accessible ordering in progress</p>
-                <p className="session-sub">A customer is ordering from their phone</p>
-              </div>
-              <button className="end-btn" type="button" onClick={() => access.endSession()}>
-                End session
-              </button>
-            </div>
-          </>
-        )}
+      {/* Blocks touch on everything except the card reader; the assistant's taps are programmatic. */}
+      {sessionActive && <div className="touch-blocker" aria-hidden="true" />}
 
-        <Finger />
-        {toast && <div className="toast" role="status">{toast}</div>}
-
-        <footer className={`status status-${status}`}>
-          <span className="status-dot" aria-hidden="true" />
-          {kioskId} · {status}
-        </footer>
-      </main>
-    </div>
+      <Finger />
+      {toast && <div className="toast" role="status">{toast}</div>}
+    </main>
   );
 }
 
 function WelcomeScreen({ qrUrl, status }: { qrUrl: string | null; status: ConnectionStatus }) {
   const start = useKiosk((s) => s.start);
+  const showQr = qrUrl !== null || status !== "online";
   return (
-    <>
-      <section className="welcome">
-        <h1>Order here</h1>
-        <p className="welcome-sub">Burgers, fries and shakes, made to order.</p>
-        <button className="start-btn" data-kiosk-id={ids.start} type="button" onClick={start}>
-          Touch to start
+    <section className="welcome">
+      <div className="welcome-hero">
+        <p className="eyebrow">Welcome to Harbor Burger</p>
+        <h1>Skip the line.<br />Order here.</h1>
+        <p className="welcome-sub">Burgers, fries and shakes, made fresh when you order.</p>
+        <button className="btn-red start-btn" data-kiosk-id={ids.start} type="button" onClick={start}>
+          Start order
         </button>
-      </section>
-      {qrUrl !== null || status !== "online" ? (
+        <div className="hero-foods" aria-hidden="true">🍔 🍟 🥤 🍪</div>
+      </div>
+      {showQr && (
         <aside className="access-card" aria-label="Accessible ordering">
+          <p className="access-badge">Accessible ordering</p>
           <div className="qr-frame">
             {qrUrl ? (
-              <QRCodeSVG value={qrUrl} size={208} marginSize={0} level="M" />
+              <QRCodeSVG value={qrUrl} size={220} marginSize={0} level="M" />
             ) : (
               <div className="qr-placeholder">{status === "online" ? "Loading code" : "Connecting"}</div>
             )}
           </div>
-          <div className="access-text">
-            <p className="access-title">Blind or low vision?</p>
-            <p className="access-body">Scan with your phone camera to order by voice from your own phone.</p>
-          </div>
+          <p className="access-title">Blind or low vision?</p>
+          <p className="access-body">Scan with your phone camera to order by voice from your own phone.</p>
         </aside>
-      ) : null}
-    </>
+      )}
+    </section>
   );
 }
 

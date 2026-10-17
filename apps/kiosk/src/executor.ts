@@ -70,9 +70,7 @@ async function tap(buttonId: string) {
   if (!frame || !el) throw new KioskError(`The "${buttonId}" button isn't on the screen right now.`);
   if ((el as HTMLButtonElement).disabled) throw new KioskError(`The "${buttonId}" button is disabled right now.`);
 
-  const before = el.getBoundingClientRect();
-  el.scrollIntoView({ block: "nearest", behavior: "smooth" });
-  if (Math.abs(el.getBoundingClientRect().top - before.top) > 1) await sleep(250);
+  if (scrollIntoList(el)) await sleep(280);
 
   moveFingerTo(el, frame);
   await sleep(TRAVEL_MS);
@@ -80,6 +78,25 @@ async function tap(buttonId: string) {
   await sleep(PRESS_MS);
   el.click();
   await nextPaint();
+}
+
+/**
+ * Scroll only the nearest scrolling list (menu grid, cart, modal body) so the target is visible.
+ * Element.scrollIntoView would also scroll the kiosk frame itself and shove the banner off screen.
+ */
+function scrollIntoList(el: HTMLElement): boolean {
+  let box = el.parentElement;
+  while (box && !/(auto|scroll)/.test(getComputedStyle(box).overflowY)) box = box.parentElement;
+  if (!box) return false;
+  const b = box.getBoundingClientRect();
+  const t = el.getBoundingClientRect();
+  const pad = 16;
+  let delta = 0;
+  if (t.top < b.top + pad) delta = t.top - b.top - pad;
+  else if (t.bottom > b.bottom - pad) delta = t.bottom - b.bottom + pad;
+  if (!delta) return false;
+  box.scrollBy({ top: delta, behavior: "smooth" });
+  return true;
 }
 
 const screen = () => useKiosk.getState().screen;

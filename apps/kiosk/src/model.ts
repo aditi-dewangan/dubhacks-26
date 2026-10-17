@@ -69,6 +69,26 @@ export function describeOptions(item: MenuItem, options: Options): string {
   return parts.join(", ");
 }
 
+const EMOJI: Record<string, string> = {
+  cheeseburger: "🍔",
+  double_cheeseburger: "🍔",
+  crispy_chicken_sandwich: "🍗",
+  veggie_burger: "🥬",
+  fries: "🍟",
+  onion_rings: "🧅",
+  nuggets: "🍗",
+  soda: "🥤",
+  iced_tea: "🧊",
+  water: "💧",
+  vanilla_shake: "🥛",
+  cookie: "🍪",
+  combo_upgrade: "🍟",
+};
+const CATEGORY_EMOJI: Record<string, string> = { burgers: "🍔", sides: "🍟", drinks: "🥤", desserts: "🍪" };
+
+export const itemEmoji = (itemId: string) => EMOJI[itemId] ?? "🍽️";
+export const categoryEmoji = (categoryId: string) => CATEGORY_EMOJI[categoryId] ?? "🍽️";
+
 export function deltaLabel(delta: number) {
   if (!delta) return "";
   return delta > 0 ? `+${money(delta)}` : `-${money(-delta)}`;
