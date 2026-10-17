@@ -168,13 +168,13 @@ describe("start_payment has exactly one sender", () => {
       return statSync(p).isDirectory() ? files(p) : p.endsWith(".ts") && !p.endsWith(".test.ts") ? [p] : [];
     });
 
-  it("only commands.ts builds a start_payment command, and only confirmCheckout calls it", () => {
+  it("only commands.ts builds start_payment or a btn-submit press, and only confirmCheckout calls it", () => {
     const builders: string[] = [];
     const callers: string[] = [];
     for (const f of files(src)) {
       const code = readFileSync(f, "utf8");
-      if (/type:\s*["']start_payment["']/.test(code)) builders.push(relative(src, f));
-      for (const _ of code.matchAll(/sendStartPayment\(/g)) callers.push(relative(src, f));
+      if (/type:\s*["']start_payment["']|buttonId:\s*["']btn-submit["']/.test(code)) builders.push(relative(src, f));
+      for (const _ of code.matchAll(/sendFinalAction\(/g)) callers.push(relative(src, f));
     }
     expect(builders).toEqual(["bridge/commands.ts"]);
     expect(callers.sort()).toEqual(["bridge/bridge.ts", "bridge/commands.ts"]); // the call, and the definition

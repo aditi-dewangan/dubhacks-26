@@ -53,11 +53,32 @@ export function describeCart(cart: Cart, withLineIds = false): string {
   const lines = cart.lines.map(
     (l) => `${describeLine(l)}${withLineIds ? ` [line ${l.lineId}]` : ""}, ${spokenMoney(l.lineTotal)}`,
   );
-  return `${lines.join("; ")}. Total with tax ${spokenMoney(cart.total)}.`;
+  return `${lines.join("; ")}. Total${cart.tax ? " with tax" : ""} ${spokenMoney(cart.total)}.`;
 }
 
 export function cartTotalSentence(cart: Cart): string {
-  return cart.lines.length ? `Cart total ${spokenMoney(cart.total)} with tax.` : "The order is now empty.";
+  return cart.lines.length ? `Cart total ${spokenMoney(cart.total)}${cart.tax ? " with tax" : ""}.` : "The order is now empty.";
+}
+
+/**
+ * Everything on a non-food kiosk's screen, for the model: the title, info lines, fields and the
+ * buttons it can press. Final buttons are listed as needing the customer's confirmation.
+ */
+export function describeScreen(state: KioskState, finalButtons: Record<string, string>): string {
+  const parts = [`The ${state.kind ?? "food"} kiosk shows "${state.title}" (screen ${state.screen}).`];
+  if (state.info?.length) parts.push(`On screen: ${state.info.map((l) => l.replace(/[.\s]+$/, "")).join("; ")}.`);
+  if (state.fields?.length) {
+    parts.push(`Fields: ${state.fields.map((f) => `${f.id} ("${f.label}") ${f.value ? `= "${f.value}"` : "is empty"}`).join(", ")}.`);
+  }
+  const usable = state.buttons.filter((b) => b.enabled && !finalButtons[b.id]);
+  const final = state.buttons.filter((b) => finalButtons[b.id]);
+  const disabled = state.buttons.filter((b) => !b.enabled && !finalButtons[b.id]);
+  if (usable.length) parts.push(`Buttons: ${usable.map((b) => `${b.id} ("${b.label}")`).join(", ")}.`);
+  if (disabled.length) parts.push(`Not available yet: ${disabled.map((b) => `"${b.label}"`).join(", ")}.`);
+  if (final.length) parts.push(`"${final.map((b) => b.label).join('", "')}" needs the customer's confirmation: call request_checkout.`);
+  if (state.cart.lines.length) parts.push(`Order: ${describeCart(state.cart)}`);
+  if (state.popup) parts.push(describePopup(state.popup));
+  return parts.join(" ");
 }
 
 export function describePopup(popup: KioskPopup): string {
