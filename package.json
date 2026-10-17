@@ -3,13 +3,18 @@
   "private": true,
   "packageManager": "pnpm@10.28.0",
   "pnpm": {
-    "onlyBuiltDependencies": ["esbuild"]
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
   },
   "scripts": {
-    "dev:server": "pnpm --filter @kiosk-access/server dev",
-    "dev:kiosk": "pnpm --filter @kiosk-access/kiosk dev",
-    "smoke": "pnpm --filter @kiosk-access/server smoke",
-    "fake-phone": "pnpm --filter @kiosk-access/server fake-phone",
-    "typecheck": "pnpm -r typecheck"
+    "dev:server": "corepack pnpm --filter @kiosk-access/server dev",
+    "dev:kiosk": "corepack pnpm --filter @kiosk-access/kiosk dev",
+    "smoke": "corepack pnpm --filter @kiosk-access/server smoke",
+    "fake-phone": "corepack pnpm --filter @kiosk-access/server fake-phone",
+    "typecheck": "corepack pnpm -r typecheck && corepack pnpm --filter @kiosk-access/server exec tsc -p ../phone/tsconfig.speech.json",
+    "test:agent": "corepack pnpm --filter @kiosk-access/server test:agent",
+    "agent:check": "corepack pnpm --filter @kiosk-access/server agent:check",
+    "agent:eval": "corepack pnpm --filter @kiosk-access/server agent:eval"
   }
 }
