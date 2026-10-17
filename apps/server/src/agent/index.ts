@@ -3,15 +3,15 @@
 
 import type { AgentMessage } from "@kiosk-access/shared";
 import { getKioskState, getSession, sendAgentMessage } from "../realtime/index.ts";
+import { createAgent } from "./service.ts";
+
+const agent = createAgent({ getSession, getKioskState, sendAgentMessage });
 
 export async function handleUserMessage(sessionId: string, text: string): Promise<AgentMessage> {
-  const session = getSession(sessionId);
-  const state = session ? getKioskState(session.kioskId) : null;
-  const where = state ? ` The kiosk is on the ${state.screen} screen.` : "";
-  return { text: `Stub agent heard: "${text}".${where}`, awaitingConfirmation: false };
+  return agent.handleUserMessage(sessionId, text);
 }
 
 /** Called by the Bridge when the kiosk shows something the user should know about. */
 export async function handleKioskEvent(sessionId: string, note: string): Promise<void> {
-  sendAgentMessage(sessionId, { text: `Stub agent: ${note}`, awaitingConfirmation: false });
+  return agent.handleKioskEvent(sessionId, note);
 }

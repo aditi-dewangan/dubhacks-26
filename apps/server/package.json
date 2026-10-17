@@ -8,7 +8,8 @@
     "start": "node --env-file-if-exists=../../.env --import tsx src/index.ts",
     "smoke": "node --env-file-if-exists=../../.env --import tsx scripts/smoke.ts",
     "fake-phone": "node --env-file-if-exists=../../.env --import tsx scripts/fake-phone.ts",
-    "typecheck": "tsc -p ."
+    "typecheck": "tsc -p .",
+    "test:agent": "node --import tsx --test src/agent/*.test.ts"
   },
   "dependencies": {
     "@kiosk-access/shared": "workspace:*",
