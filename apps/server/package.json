@@ -9,9 +9,13 @@
     "smoke": "node --env-file-if-exists=../../.env --import tsx scripts/smoke.ts",
     "fake-phone": "node --env-file-if-exists=../../.env --import tsx scripts/fake-phone.ts",
     "typecheck": "tsc -p .",
+    "test:agent": "node --import tsx --test src/agent/*.test.ts",
+    "agent:check": "node --env-file-if-exists=../../.env --import tsx scripts/agent-check.ts",
+    "agent:eval": "node --env-file-if-exists=../../.env --import tsx scripts/agent-eval.ts",
     "test:bridge": "vitest run src/bridge"
   },
   "dependencies": {
+    "@google/genai": "^2.30.0",
     "@kiosk-access/shared": "workspace:*",
     "cors": "^2.8.5",
     "express": "^4.21.0",

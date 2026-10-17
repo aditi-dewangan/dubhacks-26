@@ -51,11 +51,13 @@ Phones need HTTPS for the microphone. During development, expose the phone app w
 | `apps/server/src/realtime` | Sockets, pairing, sessions, event log | Aditi |
 | `apps/server/src/bridge` | Commands, validation, tools, payment gate | Shruti |
 | `apps/server/src/agent` | LLM loop and prompt | Eliana |
-| `apps/phone` | Customer web app (not created yet) | Nidhi |
+| `apps/phone` | Agent speech modules ready; customer UI still to be built | Nidhi (UI), Eliana (speech) |
 | `apps/dashboard` | Business dashboard (not created yet) | Nidhi |
 
-`bridge/index.ts` and `agent/index.ts` are **stubs** with the agreed signatures, so the system runs
-end to end today. Replace the bodies, keep the signatures.
+`bridge/index.ts` is a **stub**. The agent supports stub mode and a Gemini tool loop
+with session history. Actual ordering depends on the Bridge implementation. See
+[agent setup](apps/server/src/agent/README.md) for configuration and live checks.
+Use `AGENT_MODE=stub` on the server when running `pnpm smoke`.
 
 ## What the realtime layer gives the Bridge and Agent
 
