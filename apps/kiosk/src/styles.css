@@ -139,8 +139,7 @@ h1, h2, h3, p { margin: 0; }
 }
 .qr-frame svg { width: 100%; height: 100%; }
 .qr-placeholder { color: var(--muted); }
-.access-title { font-weight: 800; font-size: 1.35em; margin-bottom: 0.3em; }
-.access-body { color: var(--muted); line-height: 1.4; }
+.access-body { color: var(--muted); line-height: 1.4; font-size: 1.05em; max-width: 17em; margin: 0 auto; }
 
 /* ---------- menu ---------- */
 

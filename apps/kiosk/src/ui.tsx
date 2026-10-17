@@ -17,7 +17,6 @@ export function AccessCard({ qrUrl, status, task }: { qrUrl: string | null; stat
           <div className="qr-placeholder">{status === "online" ? "Loading code" : "Connecting"}</div>
         )}
       </div>
-      <p className="access-title">Blind or low vision?</p>
       <p className="access-body">Scan with your phone camera to finish {task} by voice from your own phone.</p>
     </aside>
   );
