@@ -51,11 +51,13 @@ Phones need HTTPS for the microphone. During development, expose the phone app w
 | `apps/server/src/realtime` | Sockets, pairing, sessions, event log | Aditi |
 | `apps/server/src/bridge` | Commands, validation, tools, payment gate | Shruti |
 | `apps/server/src/agent` | LLM loop and prompt | Eliana |
-| `apps/phone` | Customer web app (not created yet) | Nidhi |
+| `apps/phone` | Agent speech modules ready; customer UI still to be built | Nidhi (UI), Eliana (speech) |
 | `apps/dashboard` | Business dashboard (not created yet) | Nidhi |
 
-`bridge/index.ts` and `agent/index.ts` are **stubs** with the agreed signatures, so the system runs
-end to end today. Replace the bodies, keep the signatures.
+`bridge/index.ts` is a **stub**. The agent supports stub mode and a Gemini tool loop
+with session history. Actual ordering depends on the Bridge implementation. See
+[agent setup](apps/server/src/agent/README.md) for configuration and live checks.
+Use `AGENT_MODE=stub` on the server when running `pnpm smoke`.
 
 ## What the realtime layer gives the Bridge and Agent
 
@@ -88,6 +90,44 @@ time) and `user:confirm` to the Bridge's `handleConfirm`.
 - `debug:ping` (both ways): for the hour-0 ping test
 - `PairingCode.expiresAt`, `SessionInfo.reason`, phone handshake `PhoneAuth`
 - Menu: `taxRate`, and `hidden` items (the combo upgrade only comes from the popup)
+- `KioskState.kind`, `KioskState.fields`, `KioskState.info` and the `type_text` command (see below)
+
+## Four demo kiosks, one integration
+
+The same kiosk app runs four different kiosks to show the integration works on any kiosk:
+
+| URL | Kiosk | Kiosk id |
+| --- | --- | --- |
+| `/` | Harbor Burger (food ordering) | `store42-kiosk1` (`VITE_KIOSK_ID`) |
+| `/?kind=clinic` | Evergreen Family Clinic (patient check-in) | `clinic-kiosk1` |
+| `/?kind=cinema` | Starlight Cinemas (movie tickets and seats) | `cinema-kiosk1` |
+| `/?kind=transit` | MetroLink (train ticket machine) | `transit-kiosk1` |
+
+The clinic, cinema and transit kiosks need **no AI code of their own**. They read their own screen the
+way a screen reader would and publish it in `KioskState`:
+
+- `buttons`: every on-screen button, with its label and whether it's enabled
+- `fields`: text fields (label, current value, placeholder)
+- `info`: other text that matters (appointment details, prices, selected seats)
+- `kind`: `"clinic"`, `"cinema"` or `"transit"`; the food kiosk sends `"food"`
+
+They accept four commands: `press { buttonId }`, `type_text { fieldId, text }`, `start_payment` and
+`cancel_order`. The food-only commands (`add_item` and friends) are refused with a message telling
+the AI to use `press`/`type_text` instead. `btn-pay` and the card reader can never be pressed directly.
+
+**For the AI to use them:** the agent needs two generic tools, `press_button(buttonId)` and
+`type_text(fieldId, text)`, plus a prompt rule: when `kind` isn't `"food"`, read `buttons`, `fields`
+and `info` from the kiosk state and drive the screen with those. The bridge passes them to the kiosk
+as `press` and `type_text`. Checkout still goes through the confirm gate and `start_payment`.
+
+Try it without the AI:
+
+```bash
+curl -XPOST localhost:3001/api/dev/command/clinic-kiosk1 -H 'content-type: application/json' \
+  -d '{"command":{"type":"press","buttonId":"btn-start"}}'
+curl -XPOST localhost:3001/api/dev/command/clinic-kiosk1 -H 'content-type: application/json' \
+  -d '{"command":{"type":"type_text","fieldId":"field-last-name","text":"Rivera"}}'
+```
 
 ## Session rules
 

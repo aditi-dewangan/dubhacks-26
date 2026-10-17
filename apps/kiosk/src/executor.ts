@@ -5,14 +5,10 @@
 import type { CommandResult } from "@kiosk-access/sdk";
 import type { KioskCommand, MenuItem } from "@kiosk-access/shared";
 import { access, kioskId } from "./connection.ts";
-import { hideFingerSoon, moveFingerTo, pressFinger, PRESS_MS, TRAVEL_MS } from "./finger.tsx";
+import { hideFingerSoon } from "./finger.tsx";
 import { getItem, ids, type Options } from "./model.ts";
 import { toKioskState, useKiosk } from "./store.ts";
-
-class KioskError extends Error {}
-
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-const nextPaint = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+import { KioskError, tap } from "./taps.ts";
 
 let sessionActive = false;
 access.onSession((s) => { sessionActive = s.active; });
@@ -58,29 +54,12 @@ async function execute(command: KioskCommand) {
     case "press": return press(command.buttonId);
     case "start_payment": return startPayment();
     case "cancel_order": return cancelOrder();
+    case "type_text": throw new KioskError("This kiosk has no text fields. Use the menu commands or press.");
     default: throw new KioskError(`Unknown command "${(command as { type: string }).type}".`);
   }
 }
 
-// ---------------- taps ----------------
-
-async function tap(buttonId: string) {
-  const frame = document.querySelector<HTMLElement>(".kiosk");
-  const el = document.querySelector<HTMLElement>(`[data-kiosk-id="${CSS.escape(buttonId)}"]`);
-  if (!frame || !el) throw new KioskError(`The "${buttonId}" button isn't on the screen right now.`);
-  if ((el as HTMLButtonElement).disabled) throw new KioskError(`The "${buttonId}" button is disabled right now.`);
-
-  const before = el.getBoundingClientRect();
-  el.scrollIntoView({ block: "nearest", behavior: "smooth" });
-  if (Math.abs(el.getBoundingClientRect().top - before.top) > 1) await sleep(250);
-
-  moveFingerTo(el, frame);
-  await sleep(TRAVEL_MS);
-  pressFinger();
-  await sleep(PRESS_MS);
-  el.click();
-  await nextPaint();
-}
+// ---------------- navigation ----------------
 
 const screen = () => useKiosk.getState().screen;
 

@@ -2,7 +2,21 @@
 
 // ---------- Kiosk state (kiosk -> server -> phone) ----------
 
-export type Screen = "welcome" | "menu" | "item" | "cart" | "checkout" | "paying" | "complete";
+/** Screens of the food kiosk. Other kiosk kinds use their own screen names (any string). */
+export type FoodScreen = "welcome" | "menu" | "item" | "cart" | "checkout" | "paying" | "complete";
+// `string & {}` keeps autocomplete for the food screens while allowing other kiosks' names.
+export type Screen = FoodScreen | (string & {});
+
+/** Which kind of kiosk is publishing. Food kiosks support add_item etc.; every kind supports press and type_text. */
+export type KioskKind = "food" | "clinic" | "cinema" | "transit";
+
+/** A text field on screen (clinic check-in name, date of birth, ...). Fill it with type_text. */
+export interface KioskField {
+  id: string;
+  label: string;
+  value: string;
+  placeholder?: string;
+}
 
 export interface KioskButton {
   id: string;
@@ -41,6 +55,12 @@ export interface KioskState {
   cart: Cart;
   orderNumber?: string;
   sessionActive: boolean;
+  /** Kind of kiosk. Missing means "food" (older kiosks). */
+  kind?: KioskKind;
+  /** Text fields on screen. */
+  fields?: KioskField[];
+  /** Other information shown on screen, one line each (appointment details, prices, instructions). */
+  info?: string[];
 }
 
 // ---------- Commands (server -> kiosk) and acks (kiosk -> server) ----------
@@ -50,6 +70,7 @@ export type KioskCommand =
   | { type: "update_item"; lineId: string; qty?: number; options?: Record<string, string[]> }
   | { type: "remove_item"; lineId: string }
   | { type: "press"; buttonId: string }
+  | { type: "type_text"; fieldId: string; text: string } // fills a text field (any kiosk kind)
   | { type: "start_payment" } // only the Bridge's confirm handler sends this
   | { type: "cancel_order" };
 

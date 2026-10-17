@@ -59,7 +59,7 @@ interface Actions {
   backFromItem(): void;
   saveDraft(): void;
   answerPopup(buttonId: string): void;
-  showStillThere(): void;
+  showStillThere(seconds: number): void;
   openCart(): void;
   addMore(): void;
   editLine(lineId: string): void;
@@ -192,12 +192,12 @@ export const useKiosk = create<KioskModel & Actions>()((set, get) => ({
     if (popup.kind === "still-there") set({ popup: null });
   },
 
-  showStillThere: () =>
+  showStillThere: (seconds) =>
     set({
       popup: {
         kind: "still-there",
         id: "popup-still-there",
-        text: "Still there? Your order will reset soon.",
+        text: `Still there? Your order will reset in ${seconds} seconds.`,
         buttons: [{ id: ids.stillHere, label: "I'm still here" }],
       },
     }),
@@ -354,5 +354,5 @@ export function toKioskState(m: KioskModel, kioskId: string, sessionActive: bool
   }
 
   const popup = m.popup ? { id: m.popup.id, text: m.popup.text, buttons: m.popup.buttons } : undefined;
-  return { kioskId, screen: m.screen, title, buttons, popup, cart, orderNumber: m.orderNumber, sessionActive };
+  return { kioskId, kind: "food", screen: m.screen, title, buttons, popup, cart, orderNumber: m.orderNumber, sessionActive };
 }
