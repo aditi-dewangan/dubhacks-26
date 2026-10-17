@@ -8,6 +8,7 @@
   "scripts": {
     "dev:server": "pnpm --filter @kiosk-access/server dev",
     "dev:kiosk": "pnpm --filter @kiosk-access/kiosk dev",
+    "dev:phone": "pnpm --filter @kiosk-access/phone dev",
     "smoke": "pnpm --filter @kiosk-access/server smoke",
     "fake-phone": "pnpm --filter @kiosk-access/server fake-phone",
     "typecheck": "pnpm -r typecheck"
