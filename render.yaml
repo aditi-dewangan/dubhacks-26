@@ -1,0 +1,33 @@
+# Render blueprint: New > Blueprint > pick this repo.
+# After the first deploy, set PHONE_APP_URL to wherever the phone app is hosted,
+# and VITE_SERVER_URL on the kiosk to the server's URL.
+services:
+  - type: web
+    name: kiosk-access-server
+    runtime: node
+    plan: free
+    buildCommand: corepack enable && pnpm install --frozen-lockfile
+    startCommand: pnpm --filter @kiosk-access/server start
+    healthCheckPath: /health
+    envVars:
+      - key: KIOSK_KEY
+        generateValue: true
+      - key: PHONE_APP_URL
+        sync: false
+      - key: LLM_API_KEY
+        sync: false
+      - key: DEV_ROUTES
+        value: "1"
+
+  - type: web
+    name: kiosk-access-kiosk
+    runtime: static
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter @kiosk-access/kiosk build
+    staticPublishPath: apps/kiosk/dist
+    envVars:
+      - key: VITE_SERVER_URL
+        sync: false
+      - key: VITE_KIOSK_ID
+        value: store42-kiosk1
+      - key: VITE_KIOSK_KEY
+        sync: false

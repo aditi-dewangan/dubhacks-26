@@ -1,0 +1,27 @@
+{
+  "name": "@kiosk-access/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch --env-file-if-exists=../../.env --import tsx src/index.ts",
+    "start": "node --env-file-if-exists=../../.env --import tsx src/index.ts",
+    "smoke": "node --env-file-if-exists=../../.env --import tsx scripts/smoke.ts",
+    "fake-phone": "node --env-file-if-exists=../../.env --import tsx scripts/fake-phone.ts",
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@kiosk-access/shared": "workspace:*",
+    "cors": "^2.8.5",
+    "express": "^4.21.0",
+    "socket.io": "^4.8.0",
+    "tsx": "^4.19.0"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.0.0",
+    "socket.io-client": "^4.8.0",
+    "typescript": "^5.6.0"
+  }
+}

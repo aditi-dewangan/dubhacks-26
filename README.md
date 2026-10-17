@@ -1,0 +1,92 @@
+# Kiosk Access
+
+Accessible ordering for touchscreen kiosks. A blind customer scans the kiosk's QR code, talks to an
+assistant on their own phone, and the kiosk taps through the order on screen. The build plan
+(roles, contract, timeline) lives in the team doc.
+
+## Quick start
+
+```bash
+corepack enable          # gives you pnpm
+pnpm install
+cp .env.example .env
+
+pnpm dev:server          # http://localhost:3001
+pnpm dev:kiosk           # http://localhost:5173
+```
+
+Then, with both running:
+
+```bash
+pnpm smoke               # 17 end-to-end checks of pairing, sessions, relay, logging
+pnpm fake-phone          # chat with the kiosk from your terminal, no phone app needed
+```
+
+Phones need HTTPS for the microphone. During development, expose the phone app with
+`ngrok http 5174` and set `PHONE_APP_URL` to the ngrok URL so the QR code points there.
+
+## Layout and owners
+
+| Path | What | Owner |
+| --- | --- | --- |
+| `packages/shared` | Contract types, `menu.json`, fixture states | Everyone (menu: Shruti) |
+| `packages/kiosk-sdk` | SDK a kiosk vendor adds | Shruti |
+| `apps/kiosk` | Mock kiosk UI | Aditi |
+| `apps/server/src/realtime` | Sockets, pairing, sessions, event log | Aditi |
+| `apps/server/src/bridge` | Commands, validation, tools, payment gate | Shruti |
+| `apps/server/src/agent` | LLM loop and prompt | Eliana |
+| `apps/phone` | Customer web app (not created yet) | Nidhi |
+| `apps/dashboard` | Business dashboard (not created yet) | Nidhi |
+
+`bridge/index.ts` and `agent/index.ts` are **stubs** with the agreed signatures, so the system runs
+end to end today. Replace the bodies, keep the signatures.
+
+## What the realtime layer gives the Bridge and Agent
+
+Import only from `apps/server/src/realtime/index.ts`:
+
+- `sendToKiosk(kioskId, envelope)` → `false` if the kiosk is offline
+- `onKioskAck(handler)` → every `CommandAck`
+- `onKioskStateChange(handler)` → `(kioskId, prev, next, session)` on every published state
+- `onSessionEnded(handler)`
+- `getSession(sessionId)`, `getKioskState(kioskId)`
+- `sendAgentMessage(sessionId, { text, awaitingConfirmation })` → push a message to the phone
+- `logEvent(type, fields)`, `endSession(sessionId, reason)`
+
+The server already routes `user:message` to `handleUserMessage` (one message per session at a
+time) and `user:confirm` to the Bridge's `handleConfirm`.
+
+## Phone app: how to connect
+
+1. The QR opens `/k/:kioskId?t=<token>`.
+2. `POST /api/sessions` with `{ kioskId, token }` → `{ sessionId, sessionSecret }`.
+   Errors: `409 kiosk_busy`, `410 code_expired`, `503 kiosk_offline`.
+3. Connect Socket.io with `auth: { role: "phone", sessionId, sessionSecret }`.
+4. Listen for `kiosk:state`, `agent:message`, `session:ended`; send `user:message`,
+   `user:confirm`, `user:end-session`.
+
+## Contract additions (beyond the doc)
+
+- `kiosk:end-session` (kiosk → server): staff pressed "End accessible session"
+- `user:end-session` (phone → server): customer ended the session
+- `debug:ping` (both ways): for the hour-0 ping test
+- `PairingCode.expiresAt`, `SessionInfo.reason`, phone handshake `PhoneAuth`
+- Menu: `taxRate`, and `hidden` items (the combo upgrade only comes from the popup)
+
+## Session rules
+
+| Rule | Default |
+| --- | --- |
+| QR code rotates | every 60 s, each valid 90 s, single use |
+| One phone per kiosk | second phone gets 409 |
+| Idle timeout | 3 min without a user message |
+| Phone disconnected | ends after 30 s |
+| Kiosk disconnected | ends after 15 s (a reload within that keeps the session) |
+| Order complete | ends 20 s after the complete screen |
+
+All timings are env vars (see `apps/server/src/config.ts`).
+
+## Deploying
+
+`render.yaml` is a Render blueprint for the server and the kiosk. Open the server URL a few
+minutes before the demo so the free tier is awake.

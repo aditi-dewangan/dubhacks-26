@@ -1,0 +1,19 @@
+{
+  "name": "@kiosk-access/sdk",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@kiosk-access/shared": "workspace:*",
+    "socket.io-client": "^4.8.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0"
+  }
+}

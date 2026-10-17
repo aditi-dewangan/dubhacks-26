@@ -1,0 +1,15 @@
+{
+  "name": "kiosk-access",
+  "private": true,
+  "packageManager": "pnpm@10.28.0",
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild"]
+  },
+  "scripts": {
+    "dev:server": "pnpm --filter @kiosk-access/server dev",
+    "dev:kiosk": "pnpm --filter @kiosk-access/kiosk dev",
+    "smoke": "pnpm --filter @kiosk-access/server smoke",
+    "fake-phone": "pnpm --filter @kiosk-access/server fake-phone",
+    "typecheck": "pnpm -r typecheck"
+  }
+}

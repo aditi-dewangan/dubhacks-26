@@ -1,0 +1,176 @@
+:root {
+  --ink: #1d1a16;
+  --ink-soft: #5e574d;
+  --paper: #fbf6ee;
+  --card: #ffffff;
+  --brand: #d9411e;
+  --brand-dark: #a82d10;
+  --mustard: #f2b632;
+  --line: #e7dccb;
+  --ok: #2f8f4e;
+  --warn: #c98a0b;
+  --bad: #c2362b;
+  font-family: "Avenir Next", "Segoe UI", system-ui, -apple-system, sans-serif;
+  color: var(--ink);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: #2a2520;
+  min-height: 100vh;
+}
+
+/* Portrait 9:16 kiosk screen, scaled to fit any window. */
+.stage {
+  height: 100vh;
+  display: grid;
+  place-items: center;
+}
+
+.kiosk {
+  position: relative;
+  height: min(100vh, calc(100vw * 16 / 9));
+  aspect-ratio: 9 / 16;
+  background: var(--paper);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  font-size: clamp(12px, 1.9vh, 22px);
+}
+
+.kiosk-header {
+  padding: 2.2em 2.4em 0;
+}
+
+.brand { display: flex; align-items: center; gap: 0.7em; }
+.brand-mark {
+  display: grid; place-items: center;
+  width: 2.6em; height: 2.6em; border-radius: 50%;
+  background: var(--brand); color: #fff; font-weight: 800; letter-spacing: 0.02em;
+}
+.brand-name { font-size: 1.5em; font-weight: 800; letter-spacing: -0.01em; }
+
+.welcome {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 0 2.4em;
+}
+.welcome h1 {
+  font-size: 5.2em;
+  line-height: 0.95;
+  margin: 0;
+  letter-spacing: -0.03em;
+}
+.welcome-sub { font-size: 1.4em; color: var(--ink-soft); margin: 0.6em 0 1.8em; }
+
+.start-btn {
+  align-self: flex-start;
+  font: inherit;
+  font-size: 1.6em;
+  font-weight: 700;
+  padding: 0.9em 1.8em;
+  border: none;
+  border-radius: 999px;
+  background: var(--brand);
+  color: #fff;
+  cursor: pointer;
+  box-shadow: 0 0.3em 0 var(--brand-dark);
+}
+.start-btn:active { transform: translateY(0.15em); box-shadow: 0 0.15em 0 var(--brand-dark); }
+
+.access-card {
+  margin: 0 2.4em 4.5em;
+  padding: 1.4em;
+  border-radius: 1.4em;
+  background: var(--card);
+  border: 2px solid var(--line);
+  display: flex;
+  align-items: center;
+  gap: 1.4em;
+}
+.qr-frame {
+  flex: none;
+  width: 11em; height: 11em;
+  padding: 0.7em;
+  border-radius: 0.8em;
+  border: 3px solid var(--ink);
+  display: grid; place-items: center;
+  background: #fff;
+}
+.qr-frame svg { width: 100%; height: 100%; }
+.qr-placeholder { color: var(--ink-soft); font-size: 0.9em; }
+.access-title { font-size: 1.5em; font-weight: 800; margin: 0 0 0.3em; }
+.access-body { font-size: 1.1em; color: var(--ink-soft); margin: 0; line-height: 1.35; }
+
+/* Accessible session: the menu is covered and paused. */
+.session-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(29, 26, 22, 0.78);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 2.4em;
+  z-index: 10;
+}
+.session-banner {
+  display: flex; align-items: center; gap: 1em;
+  background: var(--mustard);
+  color: var(--ink);
+  padding: 1.2em 1.4em;
+  border-radius: 1.2em;
+}
+.session-title { font-size: 1.5em; font-weight: 800; margin: 0; }
+.session-sub { margin: 0.2em 0 0; font-size: 1.05em; }
+.pulse {
+  flex: none;
+  width: 1em; height: 1em; border-radius: 50%;
+  background: var(--ink);
+  animation: pulse 1.6s ease-in-out infinite;
+}
+@keyframes pulse { 50% { opacity: 0.25; transform: scale(0.8); } }
+
+.end-btn {
+  align-self: center;
+  margin-bottom: 1.6em;
+  font: inherit;
+  font-size: 1.1em;
+  font-weight: 700;
+  padding: 0.8em 1.6em;
+  border-radius: 999px;
+  border: 2px solid #fff;
+  background: transparent;
+  color: #fff;
+  cursor: pointer;
+}
+
+.toast {
+  position: absolute;
+  left: 50%; top: 7.5em;
+  transform: translateX(-50%);
+  background: var(--ink);
+  color: #fff;
+  padding: 0.8em 1.3em;
+  border-radius: 0.8em;
+  font-weight: 600;
+  z-index: 20;
+  max-width: 85%;
+  text-align: center;
+}
+
+.status {
+  position: absolute;
+  left: 2.4em; bottom: 1.4em;
+  display: flex; align-items: center; gap: 0.5em;
+  font-size: 0.85em;
+  color: var(--ink-soft);
+  z-index: 15;
+}
+.session-overlay ~ .status { color: #e9e2d6; }
+.status-dot { width: 0.7em; height: 0.7em; border-radius: 50%; background: var(--warn); }
+.status-online .status-dot { background: var(--ok); }
+.status-offline .status-dot, .status-rejected .status-dot { background: var(--bad); }
