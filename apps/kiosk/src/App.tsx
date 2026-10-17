@@ -26,8 +26,9 @@ const END_REASONS: Record<SessionEndReason, string> = {
   kiosk_disconnected: "Kiosk lost connection",
 };
 
-const IDLE_MS = 90_000;
-const STILL_THERE_MS = 20_000;
+// Inactivity timeout (no accessible session). Override for testing with VITE_IDLE_MS / VITE_STILL_THERE_MS.
+const IDLE_MS = Number(import.meta.env.VITE_IDLE_MS ?? 90_000);
+const STILL_THERE_MS = Number(import.meta.env.VITE_STILL_THERE_MS ?? 20_000);
 
 access.onCommand(runCommand);
 
@@ -167,9 +168,9 @@ function useInactivityReset(sessionActive: boolean) {
       if (s.popup?.kind === "still-there") {
         if (idle > STILL_THERE_MS) s.cancelOrder();
       } else if (!s.popup && idle > IDLE_MS) {
-        s.showStillThere();
+        s.showStillThere(Math.round(STILL_THERE_MS / 1000));
       }
-    }, 2000);
+    }, 1000);
     return () => { window.removeEventListener("pointerdown", touch); unsub(); clearInterval(timer); };
   }, [sessionActive]);
 }
