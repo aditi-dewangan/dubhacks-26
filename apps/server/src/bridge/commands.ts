@@ -14,6 +14,19 @@ export const SESSION_ENDED = "The session has ended.";
 /** Every command except start_payment, which only the payment gate can send. */
 export type SafeCommand = Exclude<KioskCommand, { type: "start_payment" }>;
 
+/**
+ * Buttons that finish something for good. Only the gate may press btn-submit (it completes a
+ * clinic check-in); pay and the card reader are never pressed by the server at all.
+ */
+export const FINAL_BUTTONS: Record<string, string> = {
+  "btn-pay": "Payment starts only after the customer confirms. Call request_checkout so they can review it.",
+  "btn-card-tap": "The customer taps their own card on the reader.",
+  "btn-submit": "That finishes the check-in for good. Call request_checkout so the customer can review and confirm it first.",
+};
+
+/** What the gate does once the customer confirms. */
+export type FinalAction = "start_payment" | "submit";
+
 export class CommandError extends Error {}
 
 export interface CommandDeps {
@@ -83,12 +96,15 @@ export function createCommandSender(deps: CommandDeps) {
       if ((command as KioskCommand).type === "start_payment") {
         return Promise.reject(new CommandError("start_payment can only be sent by the payment gate."));
       }
+      if (command.type === "press" && FINAL_BUTTONS[command.buttonId]) {
+        return Promise.reject(new CommandError(FINAL_BUTTONS[command.buttonId]));
+      }
       return send(kioskId, sessionId, command);
     },
 
     /** Only for the payment gate. Not exported from the bridge. */
-    sendStartPayment(kioskId: string, sessionId: string): Promise<CommandAck> {
-      return send(kioskId, sessionId, { type: "start_payment" });
+    sendFinalAction(kioskId: string, sessionId: string, action: FinalAction): Promise<CommandAck> {
+      return send(kioskId, sessionId, action === "submit" ? { type: "press", buttonId: "btn-submit" } : { type: "start_payment" });
     },
 
     /** Fail every command still waiting for this session (it ended). */

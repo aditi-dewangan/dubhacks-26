@@ -93,4 +93,12 @@ describe("sendCommand", () => {
     await expect(t.sender.sendCommand("k1", "s1", { type: "start_payment" })).rejects.toThrow(/payment gate/);
     expect(t.sent).toHaveLength(0);
   });
+
+  it("refuses final buttons: pay, the card reader and Complete check-in", async () => {
+    const t = harness();
+    for (const buttonId of ["btn-pay", "btn-card-tap", "btn-submit"]) {
+      await expect(t.sender.sendCommand("k1", "s1", { type: "press", buttonId })).rejects.toThrow();
+    }
+    expect(t.sent).toHaveLength(0);
+  });
 });
