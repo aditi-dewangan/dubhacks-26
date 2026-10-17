@@ -19,6 +19,7 @@
     "tsx": "^4.19.0"
   },
   "devDependencies": {
+    "@kiosk-access/sdk": "workspace:*",
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
     "@types/node": "^22.0.0",
