@@ -101,12 +101,27 @@ async function main() {
 
   // 9. Agent stub replies, in order
   const replies: string[] = [];
-  phone.on("agent:message", (m) => replies.push(m.text));
+  let resolveReplies!: (replies: string[]) => void;
+  let rejectReplies!: (error: Error) => void;
+  const repliesReady = new Promise<string[]>((resolve, reject) => {
+    resolveReplies = resolve;
+    rejectReplies = reject;
+  });
+  const onAgentMessage = (m: { text: string }) => {
+    // Popup announcements are also agent messages; this check measures user replies only.
+    if (!m.text.startsWith("Stub agent heard:")) return;
+    replies.push(m.text);
+    if (replies.length === 2) resolveReplies(replies);
+  };
+  const repliesTimeout = setTimeout(() => rejectReplies(new Error("timed out waiting for ordered agent replies")), 3000);
+  phone.on("agent:message", onAgentMessage);
   phone.emit("user:message", { text: "first" });
   phone.emit("user:message", { text: "second" });
-  await new Promise((r) => setTimeout(r, 300));
-  check(replies.length === 2 && replies[0].includes("first") && replies[1].includes("second"),
-    "user messages get agent replies, one at a time, in order");
+  const receivedReplies = await repliesReady;
+  clearTimeout(repliesTimeout);
+  phone.off("agent:message", onAgentMessage);
+  check(receivedReplies[0].includes("first") && receivedReplies[1].includes("second"),
+    `user messages get agent replies, one at a time, in order: ${receivedReplies.join(" | ")}`);
 
   // 10. Staff ends session; kiosk gets a fresh code
   const phoneEnded = waitFor<{ reason: string }>(phone, "session:ended");
