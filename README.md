@@ -54,8 +54,10 @@ Phones need HTTPS for the microphone. During development, expose the phone app w
 | `apps/phone` | Customer web app (not created yet) | Nidhi |
 | `apps/dashboard` | Business dashboard (not created yet) | Nidhi |
 
-`bridge/index.ts` and `agent/index.ts` are **stubs** with the agreed signatures, so the system runs
-end to end today. Replace the bodies, keep the signatures.
+`bridge/index.ts` is a **stub**. The agent supports stub mode and a read-only Gemini
+mode for menu and cart questions; ordering tools are not connected yet. See
+[agent setup](apps/server/src/agent/README.md) for configuration and live checks.
+Use `AGENT_MODE=stub` on the server when running `pnpm smoke`.
 
 ## What the realtime layer gives the Bridge and Agent
 

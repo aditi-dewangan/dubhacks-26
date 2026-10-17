@@ -8,3 +8,10 @@ export function readGeminiConfig(env: NodeJS.ProcessEnv = process.env) {
 }
 
 export const MAX_TOOL_ROUNDS = 6;
+
+/** Default stub preserves the existing realtime smoke tests without an API key. */
+export function readAgentMode(env: NodeJS.ProcessEnv = process.env): "stub" | "gemini" {
+  const mode = env.AGENT_MODE?.trim() || "stub";
+  if (mode !== "stub" && mode !== "gemini") throw new Error("AGENT_MODE must be stub or gemini.");
+  return mode;
+}

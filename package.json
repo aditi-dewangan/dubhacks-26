@@ -11,6 +11,7 @@
     "smoke": "pnpm --filter @kiosk-access/server smoke",
     "fake-phone": "pnpm --filter @kiosk-access/server fake-phone",
     "typecheck": "pnpm -r typecheck",
-    "test:agent": "pnpm --filter @kiosk-access/server test:agent"
+    "test:agent": "pnpm --filter @kiosk-access/server test:agent",
+    "agent:check": "pnpm --filter @kiosk-access/server agent:check"
   }
 }

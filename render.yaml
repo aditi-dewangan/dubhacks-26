@@ -1,15 +1,18 @@
 # Render blueprint: New > Blueprint > pick this repo.
+# pnpm runs through npx (no corepack, which needs root on Render).
 # After the first deploy, set PHONE_APP_URL to wherever the phone app is hosted,
-# and VITE_SERVER_URL on the kiosk to the server's URL.
+# and VITE_SERVER_URL / VITE_KIOSK_KEY on the kiosk, then redeploy the kiosk.
 services:
   - type: web
     name: kiosk-access-server
     runtime: node
     plan: free
-    buildCommand: corepack enable && pnpm install --frozen-lockfile
-    startCommand: pnpm --filter @kiosk-access/server start
+    buildCommand: npx --yes pnpm@10.28.0 install --frozen-lockfile
+    startCommand: cd apps/server && node --import tsx src/index.ts
     healthCheckPath: /health
     envVars:
+      - key: NODE_VERSION
+        value: "22.12.0"
       - key: KIOSK_KEY
         generateValue: true
       - key: PHONE_APP_URL
@@ -22,9 +25,11 @@ services:
   - type: web
     name: kiosk-access-kiosk
     runtime: static
-    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter @kiosk-access/kiosk build
+    buildCommand: npx --yes pnpm@10.28.0 install --frozen-lockfile && npx --yes pnpm@10.28.0 --filter @kiosk-access/kiosk build
     staticPublishPath: apps/kiosk/dist
     envVars:
+      - key: NODE_VERSION
+        value: "22.12.0"
       - key: VITE_SERVER_URL
         sync: false
       - key: VITE_KIOSK_ID

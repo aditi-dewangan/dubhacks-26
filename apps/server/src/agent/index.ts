@@ -1,11 +1,18 @@
-// OWNER: Eliana (Agent). This is a STUB so the rest of the system runs end to end.
-// Replace the bodies; keep the two exported signatures (they're the agreed seam).
+// OWNER: Eliana (Agent). Keep these exported signatures (the agreed seam).
 
 import type { AgentMessage } from "@kiosk-access/shared";
-import { getKioskState, getSession, sendAgentMessage } from "../realtime/index.ts";
+import { getKioskState, getSession, sendAgentMessage, logEvent } from "../realtime/index.ts";
 import { createAgent } from "./service.ts";
+import { readAgentMode } from "./config.ts";
+import { createLazyGeminiResponder } from "./gemini.ts";
 
-const agent = createAgent({ getSession, getKioskState, sendAgentMessage });
+const agent = createAgent({
+  getSession, getKioskState, sendAgentMessage,
+  generateReply: readAgentMode() === "gemini" ? createLazyGeminiResponder() : undefined,
+  reportFailure: (sessionId, code) => logEvent("error", {
+    sessionId, data: { where: "agent", provider: "gemini", code },
+  }),
+});
 
 export async function handleUserMessage(sessionId: string, text: string): Promise<AgentMessage> {
   return agent.handleUserMessage(sessionId, text);
