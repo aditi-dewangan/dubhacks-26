@@ -1,10 +1,14 @@
-import { useEffect, useRef, useState } from "react";
-import { QRCodeSVG } from "qrcode.react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import type { ConnectionStatus } from "@kiosk-access/sdk";
 import type { SessionEndReason, SessionInfo } from "@kiosk-access/shared";
-import { access, kioskId } from "./connection.ts";
+import { access } from "./connection.ts";
 import { currentState, runCommand } from "./executor.ts";
 import { Finger } from "./finger.tsx";
+import { readScreen, runGenericCommand, type GenericKiosk } from "./generic.ts";
+import { brand, kind, kioskId } from "./kinds.ts";
+import { cinemaKiosk } from "./kiosks/cinema.tsx";
+import { clinicKiosk } from "./kiosks/clinic.tsx";
+import { transitKiosk } from "./kiosks/transit.tsx";
 import { ids } from "./model.ts";
 import {
   CartScreen,
@@ -16,24 +20,32 @@ import {
   Popup,
 } from "./Screens.tsx";
 import { useKiosk } from "./store.ts";
+import { AccessCard } from "./ui.tsx";
 
 const END_REASONS: Record<SessionEndReason, string> = {
   idle_timeout: "Accessible session ended after inactivity",
-  order_complete: "Accessible order complete",
+  order_complete: "Accessible session complete",
   staff_ended: "Accessible session ended by staff",
   phone_disconnected: "Phone disconnected",
   user_ended: "Customer ended the session",
   kiosk_disconnected: "Kiosk lost connection",
 };
 
-// Inactivity timeout (no accessible session). Override for testing with VITE_IDLE_MS / VITE_STILL_THERE_MS.
+// Inactivity timeout (food kiosk, no accessible session). Override for testing with VITE_IDLE_MS / VITE_STILL_THERE_MS.
 const IDLE_MS = Number(import.meta.env.VITE_IDLE_MS ?? 90_000);
 const STILL_THERE_MS = Number(import.meta.env.VITE_STILL_THERE_MS ?? 20_000);
 
-access.onCommand(runCommand);
+const GENERIC: Record<string, GenericKiosk> = { clinic: clinicKiosk, cinema: cinemaKiosk, transit: transitKiosk };
+const generic: GenericKiosk | null = GENERIC[kind] ?? null;
+
+let sessionActiveNow = false;
+access.onSession((s) => { sessionActiveNow = s.active; });
+access.onCommand(generic ? (cmd) => runGenericCommand(generic, cmd, () => sessionActiveNow) : runCommand);
+document.title = brand.pageTitle;
+
+const brandStyle = { "--red": brand.color, "--red-dark": brand.dark } as CSSProperties;
 
 export function App() {
-  const screen = useKiosk((s) => s.screen);
   const [qrUrl, setQrUrl] = useState<string | null>(null);
   const [session, setSession] = useState<SessionInfo | null>(null);
   const [status, setStatus] = useState<ConnectionStatus>("connecting");
@@ -47,8 +59,11 @@ export function App() {
       access.onSession((info) => {
         setSession(info);
         if (!info.active && info.reason) setToast(END_REASONS[info.reason]);
-        // A finished or abandoned accessible order shouldn't linger for the next customer.
-        if (!info.active && info.reason !== "order_complete") useKiosk.getState().cancelOrder();
+        // An abandoned accessible session shouldn't leave its order behind for the next customer.
+        if (!info.active && info.reason !== "order_complete") {
+          if (generic) generic.reset();
+          else useKiosk.getState().cancelOrder();
+        }
       }),
       access.onPing((p) => setToast(`Ping from ${p.from}: ${p.text || "(empty)"}`)),
     ];
@@ -61,28 +76,29 @@ export function App() {
     return () => clearTimeout(t);
   }, [toast]);
 
-  // Publish state whenever the store or session changes (debounced ~100 ms).
+  // Publish state whenever the screen or session changes (debounced ~100 ms, after the DOM updates).
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | null = null;
     const publish = () => {
       if (timer) clearTimeout(timer);
-      timer = setTimeout(() => access.publishState(currentState()), 100);
+      timer = setTimeout(() => {
+        requestAnimationFrame(() => access.publishState(generic ? readScreen(generic, sessionActive) : currentState()));
+      }, 100);
     };
     publish();
-    const unsub = useKiosk.subscribe(publish);
+    const unsub = generic ? generic.subscribe(publish) : useKiosk.subscribe(publish);
     return () => { unsub(); if (timer) clearTimeout(timer); };
   }, [sessionActive]);
 
-  useInactivityReset(sessionActive);
-  const editingFromCart = useKiosk((s) => Boolean(s.draft?.editingLineId));
+  const visibleQr = sessionActive ? null : qrUrl;
 
   return (
-    <main className={`kiosk ${sessionActive ? "in-session" : ""}`} aria-label="Self-order kiosk">
+    <main className={`kiosk kind-${kind} ${sessionActive ? "in-session" : ""}`} style={brandStyle} aria-label={`${brand.name} kiosk`}>
       {sessionActive && (
         <div className="access-banner" role="status">
           <span className="pulse" aria-hidden="true" />
           <strong>Accessibility mode</strong>
-          <span className="access-banner-sub">A customer is ordering from their phone. Touch is paused.</span>
+          <span className="access-banner-sub">A customer is {brand.task} from their phone. Touch is paused.</span>
           <button className="end-btn" type="button" onClick={() => access.endSession()}>
             End session
           </button>
@@ -90,10 +106,10 @@ export function App() {
       )}
       <header className="topbar">
         <div className="brand">
-          <span className="brand-mark" aria-hidden="true">HB</span>
+          <span className="brand-mark" aria-hidden="true">{brand.mark}</span>
           <span>
-            <span className="brand-name">Harbor Burger</span>
-            <span className="brand-meta">Pickup · Order at the kiosk</span>
+            <span className="brand-name">{brand.name}</span>
+            <span className="brand-meta">{brand.meta}</span>
           </span>
         </div>
         <div className={`status status-${status}`}>
@@ -103,14 +119,7 @@ export function App() {
       </header>
 
       <div className="content">
-        {screen === "welcome" && <WelcomeScreen qrUrl={sessionActive ? null : qrUrl} status={status} />}
-        {(screen === "menu" || (screen === "item" && !editingFromCart)) && <MenuScreen />}
-        {(screen === "cart" || (screen === "item" && editingFromCart)) && <CartScreen />}
-        {screen === "checkout" && <CheckoutScreen />}
-        {screen === "paying" && <PayingScreen />}
-        {screen === "complete" && <CompleteScreen />}
-        {screen === "item" && <ItemModal />}
-        <Popup />
+        {generic ? <generic.Body qrUrl={visibleQr} status={status} /> : <FoodBody qrUrl={visibleQr} status={status} sessionActive={sessionActive} />}
       </div>
 
       {/* Blocks touch on everything except the card reader; the assistant's taps are programmatic. */}
@@ -122,9 +131,28 @@ export function App() {
   );
 }
 
-function WelcomeScreen({ qrUrl, status }: { qrUrl: string | null; status: ConnectionStatus }) {
+// ---------------- the food kiosk (Harbor Burger) ----------------
+
+function FoodBody({ qrUrl, status, sessionActive }: { qrUrl: string | null; status: ConnectionStatus; sessionActive: boolean }) {
+  const screen = useKiosk((s) => s.screen);
+  const editingFromCart = useKiosk((s) => Boolean(s.draft?.editingLineId));
+  useInactivityReset(sessionActive);
+  return (
+    <>
+      {screen === "welcome" && <FoodWelcome qrUrl={qrUrl} status={status} />}
+      {(screen === "menu" || (screen === "item" && !editingFromCart)) && <MenuScreen />}
+      {(screen === "cart" || (screen === "item" && editingFromCart)) && <CartScreen />}
+      {screen === "checkout" && <CheckoutScreen />}
+      {screen === "paying" && <PayingScreen />}
+      {screen === "complete" && <CompleteScreen />}
+      {screen === "item" && <ItemModal />}
+      <Popup />
+    </>
+  );
+}
+
+function FoodWelcome({ qrUrl, status }: { qrUrl: string | null; status: ConnectionStatus }) {
   const start = useKiosk((s) => s.start);
-  const showQr = qrUrl !== null || status !== "online";
   return (
     <section className="welcome">
       <div className="welcome-hero">
@@ -136,20 +164,7 @@ function WelcomeScreen({ qrUrl, status }: { qrUrl: string | null; status: Connec
         </button>
         <div className="hero-foods" aria-hidden="true">🍔 🍟 🥤 🍪</div>
       </div>
-      {showQr && (
-        <aside className="access-card" aria-label="Accessible ordering">
-          <p className="access-badge">Accessible ordering</p>
-          <div className="qr-frame">
-            {qrUrl ? (
-              <QRCodeSVG value={qrUrl} size={220} marginSize={0} level="M" />
-            ) : (
-              <div className="qr-placeholder">{status === "online" ? "Loading code" : "Connecting"}</div>
-            )}
-          </div>
-          <p className="access-title">Blind or low vision?</p>
-          <p className="access-body">Scan with your phone camera to order by voice from your own phone.</p>
-        </aside>
-      )}
+      <AccessCard qrUrl={qrUrl} status={status} task={brand.task} />
     </section>
   );
 }
