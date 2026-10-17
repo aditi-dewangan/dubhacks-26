@@ -1,5 +1,4 @@
-// OWNER: Shruti (Bridge). Minimal working version written by Aditi so the kiosk can connect today.
-// It implements the API from the build plan; harden and extend it freely.
+// OWNER: Shruti (Bridge). The SDK a kiosk vendor adds. All socket code lives here.
 //
 //   const access = AccessKiosk.connect({ serverUrl, kioskId, kioskKey });
 //   access.onPairingCode((url) => setQrUrl(url));
@@ -10,6 +9,7 @@
 import { io, type Socket } from "socket.io-client";
 import type {
   ClientToServerEvents,
+  CommandAck,
   KioskCommand,
   KioskState,
   ServerToClientEvents,
@@ -20,6 +20,10 @@ export interface ConnectOptions {
   serverUrl: string;
   kioskId: string;
   kioskKey: string;
+  /** How long publishState waits for more changes before sending. Default 100 ms. */
+  debounceMs?: number;
+  /** How long to wait for the server to answer kiosk:register. Default 5000 ms. */
+  registerTimeoutMs?: number;
 }
 
 export type CommandResult = { ok: boolean; error?: string; state: KioskState };
@@ -27,6 +31,9 @@ export type CommandHandler = (command: KioskCommand) => Promise<CommandResult>;
 export type ConnectionStatus = "connecting" | "online" | "offline" | "rejected";
 
 type Listener<T> = (value: T) => void;
+
+/** Acks for this many recent commands are kept, so a repeated cmdId is re-acked, not re-run. */
+const RECENT_ACKS = 50;
 
 export class AccessKiosk {
   private socket: Socket<ServerToClientEvents, ClientToServerEvents>;
@@ -36,6 +43,12 @@ export class AccessKiosk {
   private lastPairingUrl: string | null = null;
   private session: SessionInfo | null = null;
   private status: ConnectionStatus = "connecting";
+
+  private stateTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Acks finished while offline. Sent after the next successful kiosk:register. */
+  private unsentAcks: CommandAck[] = [];
+  /** cmdId -> ack (or the pending run) for recent commands. */
+  private recentAcks = new Map<string, CommandAck | "running">();
 
   private pairingListeners = new Set<Listener<string>>();
   private sessionListeners = new Set<Listener<SessionInfo>>();
@@ -49,20 +62,9 @@ export class AccessKiosk {
   private constructor(private options: ConnectOptions) {
     this.socket = io(options.serverUrl, { transports: ["websocket", "polling"] });
 
-    // Register on every (re)connect so a dropped connection recovers on its own.
-    this.socket.on("connect", async () => {
-      const res = await this.socket.emitWithAck("kiosk:register", {
-        kioskId: options.kioskId,
-        kioskKey: options.kioskKey,
-      });
-      if (!res.ok) {
-        this.setStatus("rejected");
-        console.error("[AccessKiosk] registration rejected:", res.error);
-        return;
-      }
-      this.setStatus("online");
-      if (this.lastState) this.socket.emit("kiosk:state", this.lastState);
-    });
+    // Socket.io reuses this socket object across reconnects, so each handler is attached
+    // exactly once. Registration runs again on every connect.
+    this.socket.on("connect", () => void this.register());
     this.socket.on("disconnect", () => this.setStatus("offline"));
     this.socket.on("connect_error", () => this.setStatus("offline"));
 
@@ -74,6 +76,12 @@ export class AccessKiosk {
     this.socket.on("session:ended", (info) => this.setSession(info));
     this.socket.on("debug:ping", (p) => this.pingListeners.forEach((l) => l(p)));
     this.socket.on("kiosk:command", (env) => {
+      if (!env || typeof env.cmdId !== "string") return;
+      const seen = this.recentAcks.get(env.cmdId);
+      if (seen === "running") return; // already queued or running
+      if (seen) return this.sendAck(seen); // the server missed our ack; resend it
+
+      this.remember(env.cmdId, "running");
       // Run commands strictly one at a time, in arrival order.
       this.commandQueue = this.commandQueue.then(async () => {
         let result: CommandResult;
@@ -88,15 +96,22 @@ export class AccessKiosk {
           };
         }
         this.lastState = result.state;
-        this.socket.emit("kiosk:ack", { cmdId: env.cmdId, ...result });
+        const ack: CommandAck = { cmdId: env.cmdId, ok: result.ok, state: result.state };
+        if (result.error) ack.error = result.error;
+        this.remember(env.cmdId, ack);
+        this.sendAck(ack);
       });
     });
   }
 
-  /** Publish what is on screen. Call it every time the screen changes. */
+  /** Publish what is on screen. Call it every time the screen changes; sends are debounced. */
   publishState(state: KioskState) {
     this.lastState = state;
-    if (this.status === "online") this.socket.emit("kiosk:state", state);
+    if (this.stateTimer) clearTimeout(this.stateTimer);
+    this.stateTimer = setTimeout(() => {
+      this.stateTimer = null;
+      this.flushState();
+    }, this.options.debounceMs ?? 100);
   }
 
   /** Handle commands from the accessible-ordering assistant. */
@@ -104,12 +119,14 @@ export class AccessKiosk {
     this.commandHandler = handler;
   }
 
+  /** The QR code URL. Called right away with the current one, and again on every rotation. */
   onPairingCode(listener: Listener<string>) {
     this.pairingListeners.add(listener);
     if (this.lastPairingUrl) listener(this.lastPairingUrl);
     return () => this.pairingListeners.delete(listener);
   }
 
+  /** An accessible session started (active: true) or ended (active: false). */
   onSession(listener: Listener<SessionInfo>) {
     this.sessionListeners.add(listener);
     if (this.session) listener(this.session);
@@ -137,10 +154,65 @@ export class AccessKiosk {
   }
 
   disconnect() {
+    if (this.stateTimer) clearTimeout(this.stateTimer);
+    this.stateTimer = null;
     this.socket.disconnect();
   }
 
+  private async register() {
+    this.setStatus("connecting");
+    let res;
+    try {
+      res = await this.socket.timeout(this.options.registerTimeoutMs ?? 5000).emitWithAck("kiosk:register", {
+        kioskId: this.options.kioskId,
+        kioskKey: this.options.kioskKey,
+      });
+    } catch {
+      // No answer. Drop the connection and let socket.io's backoff try again.
+      if (this.socket.connected) {
+        this.socket.disconnect();
+        this.socket.connect();
+      }
+      return;
+    }
+    if (!this.socket.connected) return;
+    if (!res.ok) {
+      this.setStatus("rejected");
+      console.error("[AccessKiosk] registration rejected:", res.error);
+      return;
+    }
+    this.setStatus("online");
+    // The server only listens for state and acks after registering, so send them now.
+    for (const ack of this.unsentAcks.splice(0)) this.socket.emit("kiosk:ack", ack);
+    this.flushState();
+  }
+
+  private flushState() {
+    if (this.stateTimer) clearTimeout(this.stateTimer);
+    this.stateTimer = null;
+    if (this.lastState && this.isOnline()) this.socket.emit("kiosk:state", this.lastState);
+  }
+
+  private sendAck(ack: CommandAck) {
+    if (this.isOnline()) this.socket.emit("kiosk:ack", ack);
+    else this.unsentAcks.push(ack);
+  }
+
+  private isOnline() {
+    return this.status === "online" && this.socket.connected;
+  }
+
+  private remember(cmdId: string, value: CommandAck | "running") {
+    this.recentAcks.delete(cmdId);
+    this.recentAcks.set(cmdId, value);
+    if (this.recentAcks.size > RECENT_ACKS) {
+      const oldest = this.recentAcks.keys().next().value;
+      if (oldest !== undefined) this.recentAcks.delete(oldest);
+    }
+  }
+
   private setStatus(status: ConnectionStatus) {
+    if (this.status === status) return;
     this.status = status;
     this.statusListeners.forEach((l) => l(status));
   }
