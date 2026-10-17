@@ -11,7 +11,8 @@
     "typecheck": "tsc -p .",
     "test:agent": "node --import tsx --test src/agent/*.test.ts",
     "agent:check": "node --env-file-if-exists=../../.env --import tsx scripts/agent-check.ts",
-    "agent:eval": "node --env-file-if-exists=../../.env --import tsx scripts/agent-eval.ts"
+    "agent:eval": "node --env-file-if-exists=../../.env --import tsx scripts/agent-eval.ts",
+    "test:bridge": "vitest run src/bridge"
   },
   "dependencies": {
     "@google/genai": "^2.30.0",
@@ -22,10 +23,12 @@
     "tsx": "^4.19.0"
   },
   "devDependencies": {
+    "@kiosk-access/sdk": "workspace:*",
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
     "@types/node": "^22.0.0",
     "socket.io-client": "^4.8.0",
-    "typescript": "^5.6.0"
+    "typescript": "^5.6.0",
+    "vitest": "^3.2.7"
   }
 }
