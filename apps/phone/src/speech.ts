@@ -31,7 +31,7 @@ export interface SpeechEnvironment {
   preferFallback?: boolean;
   /** Called when the browser's recognition turned out not to work, so later visits skip it. */
   rememberFallback?(): void;
-  synthesis?: Pick<SpeechSynthesis, "cancel" | "speak"> & Partial<Pick<SpeechSynthesis, "getVoices">>;
+  synthesis?: Pick<SpeechSynthesis, "cancel" | "speak"> & Partial<Pick<SpeechSynthesis, "getVoices" | "speaking" | "pending">>;
   utterance?: new (text: string) => SpeechSynthesisUtterance;
 }
 export interface ListenOptions { lang?: string; timeoutMs?: number }
@@ -51,6 +51,13 @@ export function naturalVoice(voices: SpeechSynthesisVoice[], lang = "en-US"): Sp
     ?? voices.find((x) => x.lang.startsWith(base) && !NOVELTY_VOICE.test(x.name));
 }
 
+/** Recent speech events, shown on the page with ?debug (for checking real phones). */
+export const speechLog: string[] = [];
+export function logSpeech(event: string) {
+  speechLog.push(`${new Date().toISOString().slice(14, 23)} ${event}`);
+  if (speechLog.length > 12) speechLog.shift();
+}
+
 export function createSpeechController(environment: () => SpeechEnvironment = browserEnvironment) {
   let cancelListening: (() => void) | undefined;
   let cancelSpeaking: (() => void) | undefined;
@@ -58,7 +65,13 @@ export function createSpeechController(environment: () => SpeechEnvironment = br
   let useFallback = false;
   let listenId = 0;
   const stopListening = () => { listenId++; cancelListening?.(); };
-  const stopSpeaking = () => { cancelSpeaking?.(); environment().synthesis?.cancel(); };
+  // Only cancel when something is actually queued: iPhone Safari can drop an utterance spoken
+  // right after a cancel().
+  const stopSpeaking = () => {
+    cancelSpeaking?.();
+    const synthesis = environment().synthesis;
+    if (synthesis && (synthesis.speaking !== false || synthesis.pending)) synthesis.cancel();
+  };
 
   const listenBrowser = (Constructor: new () => Recognition, options: ListenOptions): Promise<string> =>
     new Promise((resolve, reject) => {
@@ -164,14 +177,25 @@ export function createSpeechController(environment: () => SpeechEnvironment = br
         if (voice) { utterance.voice = voice; utterance.lang = voice.lang; }
         utterance.rate = rate;
         utterance.onend = () => finish();
-        utterance.onerror = () => finish(new SpeechError("failed"));
+        let started = false;
+        const notStarted = () => Object.assign(new SpeechError("failed"), { notStarted: true });
+        utterance.onerror = (event) => {
+          const code = (event as { error?: string } | undefined)?.error ?? "unknown";
+          logSpeech(`error ${code}${started ? "" : " (before start)"}`);
+          // Safari refuses speech before the first touch with "not-allowed" instead of staying
+          // silent. An error before speech starts is the same thing: the phone wouldn't speak.
+          finish(!started && options.startTimeoutMs ? notStarted() : new SpeechError("failed"));
+        };
         timer = setTimeout(() => { finish(new SpeechError("timeout")); synthesis.cancel(); }, 60_000);
-        utterance.onstart = () => { clearTimeout(startTimer); options.onStart?.(); };
+        utterance.onstart = () => { started = true; logSpeech("start"); clearTimeout(startTimer); options.onStart?.(); };
         if (options.startTimeoutMs) {
           // notStarted: the phone wouldn't speak (iPhones stay silent until the first touch).
-          startTimer = setTimeout(() => { finish(Object.assign(new SpeechError("failed"), { notStarted: true })); synthesis.cancel(); }, options.startTimeoutMs);
+          startTimer = setTimeout(() => { logSpeech("never started"); finish(notStarted()); synthesis.cancel(); }, options.startTimeoutMs);
         }
-        try { synthesis.speak(utterance); } catch { finish(new SpeechError("failed")); }
+        const touched = typeof navigator === "undefined" ? undefined
+          : (navigator as Navigator & { userActivation?: { isActive: boolean } }).userActivation?.isActive;
+        logSpeech(`speak "${text.slice(0, 18)}" touch=${touched ?? "?"} voices=${synthesis.getVoices?.().length ?? "?"}`);
+        try { synthesis.speak(utterance); } catch (err) { logSpeech(`speak threw ${(err as Error)?.name}`); finish(new SpeechError("failed")); }
       });
     },
   };

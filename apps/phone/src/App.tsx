@@ -8,7 +8,7 @@ import { usePhone } from "./store.ts";
 import { createAgentVoice } from "./agentSpeech.ts";
 import { bindVoiceSocket } from "./voiceSocket.ts";
 import { greeting, kioskKind, placeName, placeNameForKind, type Kind } from "./greeting.ts";
-import { speechSupport } from "./speech.ts";
+import { speechLog, speechSupport } from "./speech.ts";
 import { enableVoiceFallback, prepareMic, releaseMic, unlockAudio } from "./voiceFallback.ts";
 import { navigate } from "./nav.ts";
 import { iosNonSafari, permissionSteps, queryPermission, type Device } from "./permissions.ts";
@@ -311,6 +311,7 @@ export function App() {
         onRepeat={repeatLastMessage}
         onCartReview={() => setCartReviewOpen(true)}
       />
+      {DEBUG && <SpeechDebug />}
       {speechBlocked && (
         <button type="button" className="btn btn-primary speech-unlock" onClick={unlockSpeech} autoFocus>
           <SpeakerIcon /> Tap to hear the assistant
@@ -1277,6 +1278,14 @@ export function LoginPage({ onSubmit }: { onSubmit?(username: string): void }) {
 // ============================================================
 // SVG Icons
 // ============================================================
+
+// allscreen.work/c/CODE?debug shows the phone's speech events, for checking real iPhones.
+const DEBUG = typeof window !== "undefined" && new URLSearchParams(window.location.search).has("debug");
+function SpeechDebug() {
+  const [, tick] = useState(0);
+  useEffect(() => { const id = window.setInterval(() => tick(n => n + 1), 500); return () => window.clearInterval(id); }, []);
+  return <pre className="speech-debug" aria-hidden="true">{speechLog.join("\n") || "no speech yet"}</pre>;
+}
 
 function SpeakerIcon() {
   return (

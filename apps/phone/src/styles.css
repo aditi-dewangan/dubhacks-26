@@ -1486,3 +1486,9 @@ body, .page {
   box-shadow: var(--shadow-glow);
 }
 .speech-blocked .message-list { padding-top: 4.75rem; }
+.speech-debug {
+  position: fixed; z-index: 40; left: 0.5rem; right: 0.5rem; top: 7.5rem;
+  max-height: 40vh; overflow: auto; margin: 0; padding: 0.5rem;
+  font-size: 0.7rem; line-height: 1.35; white-space: pre-wrap;
+  background: rgba(0, 0, 0, 0.78); color: #9f9; border-radius: 0.5rem; pointer-events: none;
+}
