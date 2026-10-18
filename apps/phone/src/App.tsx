@@ -10,6 +10,7 @@ import { bindVoiceSocket } from "./voiceSocket.ts";
 import { greeting, kioskKind, placeName, placeNameForKind, wantsToStart, WELCOME, type Kind } from "./greeting.ts";
 import { speechSupport } from "./speech.ts";
 import { enableVoiceFallback, prepareMic, releaseMic, unlockAudio } from "./voiceFallback.ts";
+import { navigate } from "./nav.ts";
 import { iosNonSafari, permissionSteps, queryPermission, type Device } from "./permissions.ts";
 import { CAMERA_PROBLEM_TEXT, CameraError, startQrScanner, type CameraProblem } from "./qrScanner.ts";
 import { MENU_ITEMS } from "./menuData.ts";
@@ -75,6 +76,8 @@ export function App() {
   const [settingsOpen,  setSettingsOpen]  = useState(false);
   const [cartReviewOpen, setCartReviewOpen] = useState(false);
   const [permissionHelp, setPermissionHelp] = useState<Device | null>(null);
+  // Mic not allowed yet: wait for the Start tap so the browser's prompt comes with a reason.
+  const [micNeedsTap, setMicNeedsTap] = useState(false);
   const askToStartRef = useRef<(auto?: boolean) => void>(() => {});
 
   // Keep speech rate accessible to agentVoice without re-creating it on every render
@@ -136,8 +139,16 @@ export function App() {
         socket.on("connect", () => {
           if (cancelled) return;
           store.setPhase("active");
-          // Voice ordering turns itself on: greet, then listen. The browser asks for the mic if needed.
-          if (!usePhone.getState().orderingStarted && speechSupport().recognition) askToStartRef.current(true);
+          // Voice ordering turns itself on (greet, then listen) when the mic is already allowed.
+          // Otherwise wait for a tap: a surprise mic prompt on page load looks broken, and iPhones
+          // keep the greeting silent until a tap anyway. Chrome on iPhone asks again on every visit.
+          if (!usePhone.getState().orderingStarted && speechSupport().recognition) {
+            void queryPermission("microphone").then((mic) => {
+              if (cancelled || usePhone.getState().orderingStarted) return;
+              if (mic === "prompt" || (mic !== "granted" && iosNonSafari())) { setMicNeedsTap(true); return; }
+              askToStartRef.current(true);
+            });
+          }
         });
         socket.on("connect_error", e => {
           if (!cancelled) store.setError("connect_failed", e.message);
@@ -215,7 +226,8 @@ export function App() {
 
   // The first touch anywhere lets iPhones play speech and record (they block both until a tap).
   useEffect(() => {
-    const unlock = () => unlockAudio();
+    // ...and plays anything the phone couldn't say before that touch.
+    const unlock = () => { unlockAudio(); voiceRef.current?.replaySilent(); };
     document.addEventListener("pointerdown", unlock, { once: true });
     return () => document.removeEventListener("pointerdown", unlock);
   }, []);
@@ -226,6 +238,7 @@ export function App() {
   const askToStart = useCallback(async (auto = false) => {
     const voice = voiceRef.current;
     if (!voice) { enterChat(false); return; }
+    setMicNeedsTap(false);
     unlockAudio();
     // Ask for the mic now. Already blocked: show how to turn it on instead of listening.
     const mic = await queryPermission("microphone");
@@ -292,6 +305,7 @@ export function App() {
         place={placeName(kioskState, kioskId)}
         kind={kioskKind(kioskState, kioskId)}
         status={voiceListening ? "listening" : agentSpeaking ? "asking" : welcome}
+        micNeedsTap={micNeedsTap}
         onStartVoice={() => { void askToStart(); }}
         onStartText={() => enterChat(false)}
         onProfile={() => setSettingsOpen(true)}
@@ -362,7 +376,7 @@ export function QrScannerScreen() {
         if (!path) return false; // some other QR code, keep scanning
         setFound(true);
         navigator.vibrate?.(60);
-        window.location.href = path;
+        navigate(path); // no reload, so the mic isn't asked for again
         return true;
       });
       setCamera("on");
@@ -396,7 +410,7 @@ export function QrScannerScreen() {
       return;
     }
     setCodeError("");
-    window.location.href = `/c/${code}`;
+    navigate(`/c/${code}`);
   };
 
   return (
@@ -529,10 +543,13 @@ const WELCOME_STATUS: Record<WelcomeStatus, string> = {
   unheard: "I didn't catch that. Tap the start button to try again.",
 };
 
-function StartScreen({ place, kind, status, onStartVoice, onStartText, onProfile }: {
+const MIC_NOTE = "Tap the start button. Your phone will ask to use the microphone: tap Allow.";
+
+function StartScreen({ place, kind, status, micNeedsTap, onStartVoice, onStartText, onProfile }: {
   place: string;
   kind: Kind;
   status: WelcomeStatus;
+  micNeedsTap: boolean;
   onStartVoice(): void;
   onStartText(): void;
   onProfile(): void;
@@ -557,7 +574,7 @@ function StartScreen({ place, kind, status, onStartVoice, onStartText, onProfile
         </div>
         <h1 className="welcome-heading">{WELCOME[kind].heading}</h1>
         <p className="welcome-sub">{WELCOME[kind].sub}</p>
-        <p className="welcome-status" aria-live="polite">{hasSpeech ? WELCOME_STATUS[status] : "Type your order below."}</p>
+        <p className="welcome-status" aria-live="polite">{!hasSpeech ? "Type your order below." : micNeedsTap && status === "idle" ? MIC_NOTE : WELCOME_STATUS[status]}</p>
       </div>
 
       <ProfileCard />

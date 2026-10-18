@@ -53,10 +53,30 @@ export function createAgentVoice(
       }
       callbacks.setListening?.(false);
       callbacks.showTranscript(text);
+      silentText = null; // they answered, so an old unheard prompt is stale
       callbacks.sendText(text);
     } catch (error) {
       callbacks.setListening?.(false);
       if (current === generation) report(error);
+    }
+  };
+
+  // iPhones won't speak until the person first touches the screen. Speaking that never starts
+  // is treated as done (the text is on screen) so the conversation keeps going, and it's
+  // remembered so the first touch can play it (replaySilent).
+  const SPEECH_START_MS = 3000;
+  let silentText: string | null = null;   // last thing the phone couldn't say
+  let pendingText: string | null = null;  // being said right now (may not have started yet)
+  const say = async (text: string): Promise<void> => {
+    pendingText = text;
+    try {
+      await speech.speak(text, "en-US", getRate(), { startTimeoutMs: SPEECH_START_MS });
+      silentText = null;
+    } catch (error) {
+      if ((error as { notStarted?: boolean }).notStarted) { silentText = text; return; }
+      throw error;
+    } finally {
+      if (pendingText === text) pendingText = null;
     }
   };
 
@@ -65,7 +85,7 @@ export function createAgentVoice(
     if (disposed || !text.trim()) return;
     const current = ++generation;
     callbacks.setSpeaking?.(true);
-    try { await speech.speak(text, "en-US", getRate()); }
+    try { await say(text); }
     catch (error) { if (current === generation) report(error); }
     finally { if (current === generation) callbacks.setSpeaking?.(false); }
     // Auto-listen for the next turn
@@ -100,6 +120,7 @@ export function createAgentVoice(
         callbacks.setListening?.(false);
         silentStreak = 0;
         callbacks.showTranscript(text);
+        silentText = null; // they answered, so an old unheard prompt is stale
         callbacks.sendText(text);
       } catch (error) {
         callbacks.setListening?.(false);
@@ -132,6 +153,7 @@ export function createAgentVoice(
       if (disposed || ended || completion || !text.trim()) return;
       generation++;
       speech.stop();
+      silentText = null;
       callbacks.sendText(text.trim());
     },
 
@@ -144,7 +166,7 @@ export function createAgentVoice(
       const current = ++generation;
       callbacks.setSpeaking?.(true);
       let spoke = false;
-      try { await speech.speak(message.text, "en-US", getRate()); spoke = true; }
+      try { await say(message.text); spoke = true; }
       catch (error) { if (current === generation) report(error); }
       finally { if (current === generation) callbacks.setSpeaking?.(false); }
       if (spoke) this.listenAgain(current);
@@ -159,7 +181,7 @@ export function createAgentVoice(
       const current = ++generation;
       callbacks.setSpeaking?.(true);
       let spoke = false;
-      try { await speech.speak(text, "en-US", getRate(), options.auto ? { startTimeoutMs: 2500 } : {}); spoke = true; }
+      try { await say(text); spoke = true; }
       catch (error) { if (current === generation && !options.auto) report(error); }
       finally { if (current === generation) callbacks.setSpeaking?.(false); }
       if (spoke || options.auto) this.listenAgain(current);
@@ -183,7 +205,7 @@ export function createAgentVoice(
       callbacks.showStatus(completion);
       if (enabled) {
         callbacks.setSpeaking?.(true);
-        try { await speech.speak(completion, "en-US", getRate()); }
+        try { await say(completion); }
         catch { /* completion announcement — ignore errors */ }
         finally { callbacks.setSpeaking?.(false); }
         // No auto-listen after order complete
@@ -193,12 +215,21 @@ export function createAgentVoice(
      * Asks one question and returns what the customer said, without sending it to the assistant
      * (e.g. "Do you want to start ordering?" on the welcome screen). null if nothing was heard.
      */
+    /** Call on the first touch: plays whatever the phone couldn't say before it, then keeps listening. */
+    replaySilent() {
+      // The newest thing to say: one still waiting to start, else the last one that stayed silent.
+      const text = pendingText ?? silentText;
+      if (disposed || !text) return;
+      silentText = pendingText = null;
+      if (enabled && !ended && !completion) void this.receiveReply({ text });
+      else void this.speakFeedback(text);
+    },
     /** auto: asked without a tap; if the phone won't speak yet (iPhone), listen anyway. */
     async ask(question: string, options: { auto?: boolean } = {}): Promise<string | null> {
       if (disposed) return null;
       const current = ++generation;
       callbacks.setSpeaking?.(true);
-      try { await speech.speak(question, "en-US", getRate(), options.auto ? { startTimeoutMs: 2500 } : {}); }
+      try { await say(question); }
       catch { /* speaking failed; still listen */ }
       finally { if (current === generation) callbacks.setSpeaking?.(false); }
       if (current !== generation || disposed) return null;
@@ -217,7 +248,7 @@ export function createAgentVoice(
       if (disposed || !text.trim()) return;
       const current = ++generation;
       callbacks.setSpeaking?.(true);
-      try { await speech.speak(text, "en-US", getRate()); }
+      try { await say(text); }
       catch { /* ignore feedback errors */ }
       finally { if (current === generation) callbacks.setSpeaking?.(false); }
     },
