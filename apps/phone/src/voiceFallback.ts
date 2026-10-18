@@ -31,6 +31,23 @@ export function voiceFallbackAvailable() {
   return Boolean(AudioContextImpl && typeof navigator !== "undefined" && navigator.mediaDevices?.getUserMedia);
 }
 
+// One microphone stream for the whole visit, so the browser asks at most once
+// (some iPhone browsers ask again every time a page opens the mic).
+let mic: MediaStream | null = null;
+async function getMic(): Promise<MediaStream> {
+  if (mic && mic.getAudioTracks().some((t) => t.readyState === "live")) return mic;
+  mic = await navigator.mediaDevices.getUserMedia({
+    audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+  });
+  return mic;
+}
+/** Turn the microphone off (session over or page closed). */
+export function releaseMic() {
+  mic?.getTracks().forEach((t) => t.stop());
+  mic = null;
+}
+if (typeof window !== "undefined") window.addEventListener("pagehide", releaseMic);
+
 function micError(err: unknown): SpeechError {
   const name = (err as { name?: string })?.name;
   if (name === "NotAllowedError" || name === "SecurityError") return new SpeechError("permission_denied");
@@ -50,7 +67,7 @@ function recordUtterance(isCancelled: () => boolean, onCancel: (fn: () => void) 
     const cleanup = () => {
       try { processor?.disconnect(); source?.disconnect(); } catch { /* already gone */ }
       if (processor) processor.onaudioprocess = null;
-      stream?.getTracks().forEach((t) => t.stop());
+      // The stream stays open for the next answer; releaseMic() turns it off at the end.
     };
     const finish = (error?: SpeechError) => {
       if (done) return;
@@ -65,9 +82,7 @@ function recordUtterance(isCancelled: () => boolean, onCancel: (fn: () => void) 
       try {
         unlockAudio();
         if (!ctx) throw new SpeechError("unsupported");
-        stream = await navigator.mediaDevices.getUserMedia({
-          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-        });
+        stream = await getMic();
       } catch (err) {
         finish(err instanceof SpeechError ? err : micError(err));
         return;
@@ -180,5 +195,5 @@ export function enableVoiceFallback(sessionId: string, sessionSecret: string): (
       cancel() { cancelled = true; cancelRecording(); controller.abort(); },
     };
   });
-  return () => setSpeechFallback(null);
+  return () => { setSpeechFallback(null); releaseMic(); };
 }

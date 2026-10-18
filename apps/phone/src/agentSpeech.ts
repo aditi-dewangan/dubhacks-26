@@ -6,6 +6,8 @@ export interface VoiceCallbacks {
   showStatus(message: string): void;
   setSpeaking?(speaking: boolean): void;
   setListening?(listening: boolean): void;
+  /** The microphone is blocked: show how to turn it on (instead of a chat message). */
+  permissionDenied?(): void;
 }
 
 /**
@@ -108,6 +110,11 @@ export function createAgentVoice(
           if (++silentStreak < MAX_SILENT_LISTENS) { setTimeout(() => this.listenAgain(current), 200); return; }
           silentStreak = 0;
           callbacks.showStatus("I'm still here. Tap the microphone when you're ready.");
+          return;
+        }
+        if (code === "permission_denied" && callbacks.permissionDenied) {
+          handsFree = false;
+          callbacks.permissionDenied();
           return;
         }
         if (auto && code === "permission_denied") {
