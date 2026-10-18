@@ -10,7 +10,7 @@
   "scripts": {
     "dev:server": "corepack pnpm --filter @kiosk-access/server dev",
     "dev:kiosk": "corepack pnpm --filter @kiosk-access/kiosk dev",
-    "dev:phone": "pnpm --filter @kiosk-access/phone dev",
+    "dev:phone": "corepack pnpm --filter @kiosk-access/phone dev",
     "smoke": "corepack pnpm --filter @kiosk-access/server smoke",
     "fake-phone": "corepack pnpm --filter @kiosk-access/server fake-phone",
     "fake-kiosk": "corepack pnpm --filter @kiosk-access/sdk fake-kiosk",

@@ -99,7 +99,7 @@ export function App() {
 
         // bindVoiceSocket wires agent:message → TTS, kiosk:state → order-complete TTS,
         // session:ended → stop speech. These run in addition to the store-update handlers below.
-        unbindVoice = bindVoiceSocket(socket, voice);
+        unbindVoice = bindVoiceSocket(socket as unknown as Parameters<typeof bindVoiceSocket>[0], voice);
 
         socket.on("connect", () => {
           if (cancelled) return;
@@ -1261,7 +1261,9 @@ export function DemoApp() {
               kioskState={{ kioskId: "store42-kiosk1", screen: "menu", title: "Menu", buttons: [], cart: MOCK_CART, sessionActive: true }}
               agentThinking={false}
               agentSpeaking={false}
+              voiceListening={false}
               onSend={noopStr}
+              onMicPress={noop}
               onEnd={noop}
               onSettings={() => setSettingsOpen(true)}
               onRepeat={noop}
@@ -1273,7 +1275,7 @@ export function DemoApp() {
       case "confirm":
         return <ConfirmOrderScreen cart={MOCK_CART} onConfirm={noop as never} />;
       case "paying":
-        return <PayAtReaderScreen kioskState={MOCK_KIOSK_PAYING} onEnd={noop} />;
+        return <PayAtReaderScreen kioskState={MOCK_KIOSK_PAYING} onEnd={noop} onRepeat={noop} />;
       case "complete":
         return <OrderCompleteScreen kioskState={MOCK_KIOSK_COMPLETE} />;
       case "ended":
