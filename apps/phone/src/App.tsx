@@ -13,6 +13,7 @@ import { enableVoiceFallback, prepareMic, releaseMic, unlockAudio } from "./voic
 import { navigate } from "./nav.ts";
 import { iosNonSafari, permissionSteps, queryPermission, type Device } from "./permissions.ts";
 import { CAMERA_PROBLEM_TEXT, CameraError, startQrScanner, type CameraProblem } from "./qrScanner.ts";
+import { MENU_ITEMS } from "./menuData.ts";
 
 let _id = 0;
 const uid = () => String(++_id);
@@ -459,6 +460,12 @@ export function QrScannerScreen() {
         </form>
 
         <a className="profile-link" href="/profile">My profile &amp; order history</a>
+
+
+        <div className="scanner-menu-preview">
+          <p className="scanner-menu-heading">Today&apos;s Menu</p>
+          <MenuCarousel compact />
+        </div>
 
       </div>
       {helpOpen && (
@@ -1353,6 +1360,25 @@ function ReaderIcon() {
       <line x1="16" y1="30" x2="22" y2="30" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
       <line x1="16" y1="34" x2="32" y2="34" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
     </svg>
+  );
+}
+
+function MenuCarousel({ compact = false }: { compact?: boolean }) {
+  return (
+    <div className="menu-carousel-wrap">
+      {!compact && <p className="menu-carousel-label">Menu</p>}
+      <div className="menu-carousel" role="list" aria-label="Menu items">
+        {MENU_ITEMS.map(item => (
+          <div key={item.id} className="menu-card" role="listitem">
+            <img src={item.image} alt={item.name} className="menu-card-img" loading="lazy" />
+            <div className="menu-card-body">
+              <p className="menu-card-name">{item.name}</p>
+              <p className="menu-card-price">${item.price.toFixed(2)}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
