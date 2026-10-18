@@ -118,3 +118,44 @@ test("socket binding removes its listeners and cancels speech on cleanup", async
   assert.equal(socket.listenerCount("kiosk:state"), 0);
   assert.equal(socket.listenerCount("session:ended"), 0);
 });
+
+test("falls back to recording when the browser refuses its own recognition (Chrome on iPhone)", async () => {
+  let fallbackCalls = 0;
+  class RefusingRecognition implements Recognition {
+    lang = ""; continuous = false; interimResults = false;
+    onresult: Recognition["onresult"] = null; onerror: Recognition["onerror"] = null; onend: Recognition["onend"] = null;
+    start() { queueMicrotask(() => this.onerror?.({ error: "service-not-allowed" })); }
+    abort() {}
+  }
+  const controller = createSpeechController(() => ({
+    recognition: RefusingRecognition,
+    fallback: () => { fallbackCalls++; return { result: Promise.resolve("two cheeseburgers"), cancel() {} }; },
+  }));
+  assert.equal(await controller.listen(), "two cheeseburgers");
+  // Later listens go straight to the fallback.
+  assert.equal(await controller.listen(), "two cheeseburgers");
+  assert.equal(fallbackCalls, 2);
+});
+
+test("uses the fallback when there is no browser recognition, and it can be cancelled", async () => {
+  let cancelled = false;
+  const controller = createSpeechController(() => ({
+    fallback: () => ({ result: new Promise<string>(() => {}), cancel() { cancelled = true; } }),
+  }));
+  assert.equal(controller.support().recognition, true);
+  const pending = controller.listen();
+  controller.stopListening();
+  await assert.rejects(pending, (e: unknown) => e instanceof SpeechError && e.code === "cancelled");
+  assert.equal(cancelled, true);
+});
+
+test("without a fallback, a refused mic is still reported as denied", async () => {
+  class Refusing implements Recognition {
+    lang = ""; continuous = false; interimResults = false;
+    onresult: Recognition["onresult"] = null; onerror: Recognition["onerror"] = null; onend: Recognition["onend"] = null;
+    start() { queueMicrotask(() => this.onerror?.({ error: "not-allowed" })); }
+    abort() {}
+  }
+  const controller = createSpeechController(() => ({ recognition: Refusing }));
+  await assert.rejects(controller.listen(), (e: unknown) => e instanceof SpeechError && e.code === "permission_denied");
+});
