@@ -9,6 +9,8 @@ import { createAgentVoice } from "./agentSpeech.ts";
 import { bindVoiceSocket } from "./voiceSocket.ts";
 import { greeting } from "./greeting.ts";
 import { speechSupport } from "./speech.ts";
+import { enableVoiceFallback, unlockAudio } from "./voiceFallback.ts";
+import { CAMERA_PROBLEM_TEXT, CameraError, startQrScanner, type CameraProblem } from "./qrScanner.ts";
 
 let _id = 0;
 const uid = () => String(++_id);
@@ -82,6 +84,7 @@ export function App() {
     let cancelled = false;
     let socket: PhoneSocket | null = null;
     let unbindVoice: (() => void) | null = null;
+    let disableVoiceFallback: (() => void) | null = null;
 
     (async () => {
       try {
@@ -89,6 +92,8 @@ export function App() {
         if (cancelled) return;
         socket = connectSocket(sess.sessionId, sess.sessionSecret);
         socketRef.current = socket;
+        // If the browser can't do speech-to-text (Chrome on iPhone), record and let the server transcribe.
+        disableVoiceFallback = enableVoiceFallback(sess.sessionId, sess.sessionSecret);
         // Recognise a returning customer (no login screen). Ordering doesn't wait for it.
         void attachProfile(sess.sessionId, sess.sessionSecret).then(p => { if (p && !cancelled) applyProfile(p); });
 
@@ -147,6 +152,7 @@ export function App() {
     return () => {
       cancelled = true;
       unbindVoice?.();
+      disableVoiceFallback?.();
       voiceRef.current?.dispose();
       voiceRef.current = null;
       socket?.disconnect();
@@ -185,6 +191,7 @@ export function App() {
     const hello = greeting(store.kioskState, store.profile);
     store.pushMessage({ id: uid(), role: "agent", text: hello, awaitingConfirmation: false });
     if (withVoice) {
+      unlockAudio(); // iPhones only allow recording audio after a tap
       voiceRef.current?.setEnabled(true, { handsFree: true });
       void voiceRef.current?.greet(hello);
     }
@@ -228,7 +235,7 @@ export function App() {
         agentSpeaking={agentSpeaking}
         voiceListening={voiceListening}
         onSend={sendText}
-        onMicPress={() => voiceRef.current?.listenAndSend()}
+        onMicPress={() => { unlockAudio(); void voiceRef.current?.listenAndSend(); }}
         onEnd={endSession}
         onSettings={() => setSettingsOpen(true)}
         onRepeat={repeatLastMessage}
@@ -246,15 +253,11 @@ export function App() {
 // QrScannerScreen
 // ============================================================
 
-// BarcodeDetector is not in TypeScript's lib.dom yet — minimal inline type.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const BarcodeDetectorAPI: (new (opts: { formats: string[] }) => { detect(src: HTMLVideoElement): Promise<{ rawValue: string }[]> }) | undefined
-  = typeof window !== "undefined" ? (window as unknown as Record<string, unknown>).BarcodeDetector as never : undefined;
-
 /** Parse a full QR URL and extract the relative path + params we need. */
 function parseQrUrl(raw: string): string | null {
   try {
     const url = new URL(raw);
+    if (/^\/c\/[A-Za-z0-9]+$/.test(url.pathname)) return url.pathname; // kiosk code link
     const match = url.pathname.match(/^\/k\/([^/?#]+)/);
     const token = url.searchParams.get("t");
     if (!match?.[1] || !token) return null;
@@ -266,55 +269,38 @@ function parseQrUrl(raw: string): string | null {
 
 function QrScannerScreen() {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const [cameraError, setCameraError] = useState("");
+  const stopRef = useRef<(() => void) | null>(null);
+  const [camera, setCamera] = useState<"starting" | "on" | CameraProblem>("starting");
   const [found, setFound] = useState(false);
   const [codeInput, setCodeInput] = useState("");
   const [codeError, setCodeError] = useState("");
-  const supported = Boolean(BarcodeDetectorAPI);
+
+  const startCamera = useCallback(async () => {
+    if (!videoRef.current) return;
+    stopRef.current?.();
+    setCamera("starting");
+    try {
+      stopRef.current = await startQrScanner(videoRef.current, (text) => {
+        const path = parseQrUrl(text);
+        if (!path) return false; // some other QR code, keep scanning
+        setFound(true);
+        navigator.vibrate?.(60);
+        window.location.href = path;
+        return true;
+      });
+      setCamera("on");
+    } catch (err) {
+      setCamera(err instanceof CameraError ? err.problem : "failed");
+    }
+  }, []);
 
   useEffect(() => {
-    if (!supported || !videoRef.current) return;
-    let stopped = false;
-    let stream: MediaStream | null = null;
-    let rafId = 0;
-    const detector = new BarcodeDetectorAPI!({ formats: ["qr_code"] });
+    startCamera();
+    return () => { stopRef.current?.(); stopRef.current = null; };
+  }, [startCamera]);
 
-    const scan = async () => {
-      if (stopped || !videoRef.current) return;
-      try {
-        const results = await detector.detect(videoRef.current);
-        for (const r of results) {
-          const path = parseQrUrl(r.rawValue);
-          if (path) {
-            stopped = true;
-            setFound(true);
-            stream?.getTracks().forEach(t => t.stop());
-            window.location.href = path;
-            return;
-          }
-        }
-      } catch { /* frame not ready yet */ }
-      rafId = requestAnimationFrame(scan);
-    };
-
-    (async () => {
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } } });
-        if (stopped) { stream.getTracks().forEach(t => t.stop()); return; }
-        videoRef.current!.srcObject = stream;
-        await videoRef.current!.play();
-        scan();
-      } catch {
-        setCameraError("Could not access the camera. Allow camera access in your browser settings and try again.");
-      }
-    })();
-
-    return () => {
-      stopped = true;
-      cancelAnimationFrame(rafId);
-      stream?.getTracks().forEach(t => t.stop());
-    };
-  }, [supported]);
+  const cameraProblem = camera !== "starting" && camera !== "on" ? camera : null;
+  const canRetry = cameraProblem && cameraProblem !== "insecure" && cameraProblem !== "unsupported" && cameraProblem !== "not_found";
 
   // Kiosk codes: FD (food), CN (cinema), TR (transit), HP (hospital) + 5 digits, e.g. FD48213.
   const submitCode = () => {
@@ -342,10 +328,10 @@ function QrScannerScreen() {
           <div className="panel panel-sage" role="status" style={{ width: "100%", textAlign: "center", padding: "1.5rem" }}>
             <CheckmarkIcon size={24} color="var(--sage-text)" /> QR code found — connecting…
           </div>
-        ) : supported ? (
+        ) : (
           <div className="scanner-viewfinder" aria-label="Camera viewfinder">
-            <video ref={videoRef} className="scanner-video" muted playsInline aria-hidden="true" />
-            {!cameraError && (
+            <video ref={videoRef} className="scanner-video" muted playsInline autoPlay aria-hidden="true" />
+            {camera === "on" && (
               <div className="scanner-frame" aria-hidden="true">
                 <div className="scanner-corner scanner-corner-tl" />
                 <div className="scanner-corner scanner-corner-tr" />
@@ -354,16 +340,22 @@ function QrScannerScreen() {
                 <div className="scanner-line" />
               </div>
             )}
-            {cameraError && (
-              <div className="scanner-placeholder">
-                <CameraOffIcon />
-                <span>{cameraError}</span>
+            {camera === "starting" && (
+              <div className="scanner-placeholder" role="status">
+                <span>Opening camera…</span>
               </div>
             )}
-          </div>
-        ) : (
-          <div className="panel panel-peach" style={{ width: "100%" }}>
-            In-app QR scanning isn&apos;t supported by this browser. Use your phone&apos;s camera app to scan the kiosk&apos;s QR code directly.
+            {cameraProblem && (
+              <div className="scanner-placeholder" role="alert">
+                <CameraOffIcon />
+                <span>{CAMERA_PROBLEM_TEXT[cameraProblem]}</span>
+                {canRetry && (
+                  <button type="button" className="btn btn-primary scanner-retry" onClick={startCamera}>
+                    Turn on camera
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -398,7 +390,6 @@ function QrScannerScreen() {
           {codeError && <p className="code-entry-error" role="alert">{codeError}</p>}
         </form>
 
-        {cameraError && <p className="voice-error-msg" role="alert">{cameraError}</p>}
       </div>
     </div>
   );
