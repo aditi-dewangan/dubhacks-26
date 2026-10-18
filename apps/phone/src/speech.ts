@@ -136,8 +136,9 @@ export function createSpeechController(environment: () => SpeechEnvironment = br
         throw error;
       });
     },
-    /** startTimeoutMs: give up if speech hasn't started by then (iPhones stay silent until the first tap). */
-    speak(text: string, lang = "en-US", rate = 1.0, options: { startTimeoutMs?: number } = {}): Promise<void> {
+    /** startTimeoutMs: give up if speech hasn't started by then (iPhones stay silent until the first tap).
+     *  onStart: called when the phone actually starts saying it. */
+    speak(text: string, lang = "en-US", rate = 1.0, options: { startTimeoutMs?: number; onStart?: () => void } = {}): Promise<void> {
       stopListening(); stopSpeaking();
       if (!text.trim()) return Promise.resolve();
       const { synthesis, utterance: Utterance } = environment();
@@ -165,8 +166,8 @@ export function createSpeechController(environment: () => SpeechEnvironment = br
         utterance.onend = () => finish();
         utterance.onerror = () => finish(new SpeechError("failed"));
         timer = setTimeout(() => { finish(new SpeechError("timeout")); synthesis.cancel(); }, 60_000);
+        utterance.onstart = () => { clearTimeout(startTimer); options.onStart?.(); };
         if (options.startTimeoutMs) {
-          utterance.onstart = () => clearTimeout(startTimer);
           // notStarted: the phone wouldn't speak (iPhones stay silent until the first touch).
           startTimer = setTimeout(() => { finish(Object.assign(new SpeechError("failed"), { notStarted: true })); synthesis.cancel(); }, options.startTimeoutMs);
         }

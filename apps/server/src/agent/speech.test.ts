@@ -194,3 +194,27 @@ test("Safari's 'not-allowed' (needs a tap) uses the fallback once but keeps tryi
   assert.equal(started, 2);
   assert.equal(remembered, 0);
 });
+test("speech the phone won't start is reported as blocked; a touch replays it, or the fallback", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  type FakeUtterance = { text: string; onstart?: () => void; onend?: () => void };
+  const h = fixture();
+  const blocked: boolean[] = [];
+  const voice = createAgentVoice({ sendText: () => {}, showTranscript: () => {}, showStatus: () => {},
+    speechBlocked: (value) => { blocked.push(value); } }, () => 1, h.controller);
+  voice.setEnabled(true, { handsFree: false });
+  const greeting = voice.speakFeedback("Welcome");
+  t.mock.timers.tick(3000); // iPhone before the first touch: speech never starts
+  await greeting;
+  assert.deepEqual(blocked, [true]);
+
+  voice.replaySilent("Last message");
+  const replay = h.spoken.at(-1) as unknown as FakeUtterance;
+  assert.equal(replay.text, "Welcome"); // what it couldn't say wins over the fallback
+  replay.onstart?.();
+  assert.deepEqual(blocked, [true, false]);
+  replay.onend?.();
+  await new Promise((resolve) => setImmediate(resolve)); // let the replay finish
+
+  voice.replaySilent("Last message"); // nothing waiting: says the fallback
+  assert.equal((h.spoken.at(-1) as unknown as FakeUtterance).text, "Last message");
+});

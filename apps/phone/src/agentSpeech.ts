@@ -8,6 +8,8 @@ export interface VoiceCallbacks {
   setListening?(listening: boolean): void;
   /** The microphone is blocked: show how to turn it on (instead of a chat message). */
   permissionDenied?(): void;
+  /** true: the phone wouldn't speak (iPhone before the first touch). false: speech actually started. */
+  speechBlocked?(blocked: boolean): void;
 }
 
 /**
@@ -70,10 +72,10 @@ export function createAgentVoice(
   const say = async (text: string): Promise<void> => {
     pendingText = text;
     try {
-      await speech.speak(text, "en-US", getRate(), { startTimeoutMs: SPEECH_START_MS });
+      await speech.speak(text, "en-US", getRate(), { startTimeoutMs: SPEECH_START_MS, onStart: () => callbacks.speechBlocked?.(false) });
       silentText = null;
     } catch (error) {
-      if ((error as { notStarted?: boolean }).notStarted) { silentText = text; return; }
+      if ((error as { notStarted?: boolean }).notStarted) { silentText = text; callbacks.speechBlocked?.(true); return; }
       throw error;
     } finally {
       if (pendingText === text) pendingText = null;
@@ -215,10 +217,11 @@ export function createAgentVoice(
      * Asks one question and returns what the customer said, without sending it to the assistant
      * (e.g. "Do you want to start ordering?" on the welcome screen). null if nothing was heard.
      */
-    /** Call on the first touch: plays whatever the phone couldn't say before it, then keeps listening. */
-    replaySilent() {
+    /** Call on a touch: plays whatever the phone couldn't say before it, then keeps listening.
+     *  fallback: what to say if nothing is waiting (e.g. the last message on screen). */
+    replaySilent(fallback?: string) {
       // The newest thing to say: one still waiting to start, else the last one that stayed silent.
-      const text = pendingText ?? silentText;
+      const text = pendingText ?? silentText ?? fallback;
       if (disposed || !text) return;
       silentText = pendingText = null;
       if (enabled && !ended && !completion) void this.receiveReply({ text });

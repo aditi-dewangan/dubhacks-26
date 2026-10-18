@@ -74,6 +74,9 @@ export function App() {
   const [settingsOpen,  setSettingsOpen]  = useState(false);
   const [cartReviewOpen, setCartReviewOpen] = useState(false);
   const [permissionHelp, setPermissionHelp] = useState<Device | null>(null);
+  // The phone wouldn't speak yet (iPhones need one touch first): show a "Tap to hear" button.
+  const [speechBlocked, setSpeechBlocked] = useState(false);
+  const heardRef = useRef(false);
   const startOrderingRef = useRef<() => void>(() => {});
 
   // Keep speech rate accessible to agentVoice without re-creating it on every render
@@ -125,6 +128,10 @@ export function App() {
           permissionDenied: () => setPermissionHelp("microphone"),
           setSpeaking: (v) => setAgentSpeaking(v),
           setListening: (v) => setVoiceListening(v),
+          speechBlocked: (blocked) => {
+            if (!blocked) heardRef.current = true;
+            setSpeechBlocked(blocked && !heardRef.current);
+          },
         }, () => speechRateRef.current);
         voiceRef.current = voice;
 
@@ -212,13 +219,23 @@ export function App() {
     }
   }, []);
 
-  // The first touch anywhere lets iPhones play speech and record (they block both until a tap).
-  useEffect(() => {
-    // ...and plays anything the phone couldn't say before that touch.
-    const unlock = () => { unlockAudio(); voiceRef.current?.replaySilent(); };
-    document.addEventListener("pointerdown", unlock, { once: true });
-    return () => document.removeEventListener("pointerdown", unlock);
+  // iPhones block speech and recording until the page is touched. Every touch, until the phone has
+  // actually spoken once, says what it couldn't say (or the last message). Not just the first touch:
+  // one that lands while nothing is waiting would otherwise leave the voice off for the whole visit.
+  const lastUnlock = useRef(0);
+  const unlockSpeech = useCallback(() => {
+    unlockAudio();
+    if (heardRef.current || Date.now() - lastUnlock.current < 1000) return; // a tap fires pointerdown and click
+    lastUnlock.current = Date.now();
+    const last = [...usePhone.getState().messages].reverse().find(m => m.role === "agent");
+    voiceRef.current?.replaySilent(last?.text);
   }, []);
+  // Room above the first message for the "Tap to hear" button.
+  useEffect(() => { document.body.classList.toggle("speech-blocked", speechBlocked); }, [speechBlocked]);
+  useEffect(() => {
+    document.addEventListener("pointerdown", unlockSpeech);
+    return () => document.removeEventListener("pointerdown", unlockSpeech);
+  }, [unlockSpeech]);
 
   // Runs right after connecting, with no welcome screen or tap. The mic prompt comes first (Chrome on
   // iPhone asks on every visit), then the chat opens with voice. iPhones keep the greeting silent
@@ -294,6 +311,11 @@ export function App() {
         onRepeat={repeatLastMessage}
         onCartReview={() => setCartReviewOpen(true)}
       />
+      {speechBlocked && (
+        <button type="button" className="btn btn-primary speech-unlock" onClick={unlockSpeech} autoFocus>
+          <SpeakerIcon /> Tap to hear the assistant
+        </button>
+      )}
       {settingsOpen && <SettingsSheet onClose={() => setSettingsOpen(false)} />}
       {micHelp}
       {cartReviewOpen && kioskState?.cart && (
@@ -1255,6 +1277,15 @@ export function LoginPage({ onSubmit }: { onSubmit?(username: string): void }) {
 // ============================================================
 // SVG Icons
 // ============================================================
+
+function SpeakerIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+      <path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor" />
+      <path d="M16.5 8.5a5 5 0 010 7M19 6a8.5 8.5 0 010 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
 
 function MicIcon({ active, size = 24 }: { active: boolean; size?: number }) {
   return (
