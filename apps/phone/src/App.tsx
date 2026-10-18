@@ -97,7 +97,7 @@ export function App() {
 
         // bindVoiceSocket wires agent:message → TTS, kiosk:state → order-complete TTS,
         // session:ended → stop speech. These run in addition to the store-update handlers below.
-        unbindVoice = bindVoiceSocket(socket, voice);
+        unbindVoice = bindVoiceSocket(socket as Parameters<typeof bindVoiceSocket>[0], voice);
 
         socket.on("connect", () => {
           if (cancelled) return;
@@ -1099,27 +1099,42 @@ function FoodIllustration() {
   return (
     <svg width="140" height="140" viewBox="0 0 140 140" fill="none" aria-hidden="true" focusable="false">
       {/* Plate shadow */}
-      <ellipse cx="70" cy="118" rx="42" ry="6" fill="rgba(72,86,150,0.07)" />
+      <ellipse cx="70" cy="118" rx="44" ry="6" fill="rgba(72,86,150,0.07)" />
       {/* Plate */}
-      <ellipse cx="70" cy="110" rx="40" ry="8" fill="#FEF3E2" stroke="#F5C370" strokeWidth="1.5" />
-      {/* Bottom bun */}
-      <path d="M34 92c0 10 16.268 18 36 18s36-8 36-18H34z" fill="#F9C784" stroke="#F5C370" strokeWidth="1.5" />
-      {/* Lettuce frills */}
-      <path d="M32 86c5-5 8-2 12 1 4-5 8-5 12 0 4-5 8-4 12 0 4-5 8-4 12 0 4-5 8-3 12 2H32z" fill="#A8D8A8" />
-      {/* Cheese slice */}
-      <path d="M30 82h80l-4 8H34l-4-8z" fill="#F9C784" stroke="#F5C370" strokeWidth="1" />
-      {/* Patty */}
-      <rect x="32" y="72" width="76" height="12" rx="4" fill="#C48A5A" />
-      {/* Patty shading */}
-      <rect x="32" y="72" width="76" height="5" rx="4" fill="rgba(255,255,255,0.08)" />
-      {/* Top bun */}
-      <path d="M36 70C36 52 52.536 38 70 38c17.464 0 34 14 34 32H36z" fill="#F9C784" stroke="#F5C370" strokeWidth="1.5" />
-      {/* Sesame seeds */}
-      <ellipse cx="58" cy="50" rx="3.5" ry="2" fill="#F5C370" transform="rotate(-15 58 50)" />
-      <ellipse cx="70" cy="44" rx="3.5" ry="2" fill="#F5C370" transform="rotate(5 70 44)" />
-      <ellipse cx="83" cy="49" rx="3.5" ry="2" fill="#F5C370" transform="rotate(-8 83 49)" />
-      <ellipse cx="64" cy="57" rx="3" ry="1.8" fill="#F5C370" transform="rotate(10 64 57)" />
-      <ellipse cx="76" cy="54" rx="3" ry="1.8" fill="#F5C370" transform="rotate(-5 76 54)" />
+      <ellipse cx="70" cy="112" rx="42" ry="9" fill="#FEF3E2" stroke="#F5C370" strokeWidth="1.5" />
+
+      {/* Dipping sauce cup */}
+      <rect x="97" y="87" width="18" height="20" rx="3" fill="#FFFBF2" stroke="#F5C370" strokeWidth="1" />
+      <rect x="97" y="87" width="18" height="9" rx="3" fill="#F5A623" />
+      <line x1="100" y1="99" x2="113" y2="99" stroke="#F5C370" strokeWidth="0.8" />
+      <line x1="100" y1="103" x2="113" y2="103" stroke="#F5C370" strokeWidth="0.8" />
+
+      {/* Chicken finger 1 — back, tilted left */}
+      <g transform="rotate(-16, 55, 64)">
+        <rect x="24" y="54" width="62" height="20" rx="10" fill="#B8682E" />
+        <rect x="24" y="54" width="62" height="9" rx="10" fill="rgba(255,215,140,0.28)" />
+        <ellipse cx="37" cy="62" rx="2.5" ry="1.4" fill="rgba(155,85,25,0.45)" />
+        <ellipse cx="52" cy="59" rx="2"   ry="1.3" fill="rgba(155,85,25,0.4)"  />
+        <ellipse cx="67" cy="62" rx="2"   ry="1.3" fill="rgba(155,85,25,0.4)"  />
+      </g>
+
+      {/* Chicken finger 2 — middle, barely tilted */}
+      <g transform="rotate(-5, 60, 81)">
+        <rect x="28" y="71" width="64" height="20" rx="10" fill="#D4924E" />
+        <rect x="28" y="71" width="64" height="9" rx="10" fill="rgba(255,215,140,0.3)" />
+        <ellipse cx="41" cy="78" rx="2.5" ry="1.4" fill="rgba(170,95,30,0.4)"  />
+        <ellipse cx="57" cy="75" rx="2"   ry="1.3" fill="rgba(170,95,30,0.38)" />
+        <ellipse cx="73" cy="78" rx="2"   ry="1.3" fill="rgba(170,95,30,0.38)" />
+      </g>
+
+      {/* Chicken finger 3 — front, tilted right */}
+      <g transform="rotate(10, 52, 97)">
+        <rect x="21" y="87" width="62" height="20" rx="10" fill="#C07038" />
+        <rect x="21" y="87" width="62" height="9" rx="10" fill="rgba(255,215,140,0.25)" />
+        <ellipse cx="34" cy="95" rx="2.5" ry="1.4" fill="rgba(155,80,25,0.45)" />
+        <ellipse cx="49" cy="92" rx="2"   ry="1.3" fill="rgba(155,80,25,0.4)"  />
+        <ellipse cx="64" cy="95" rx="2"   ry="1.3" fill="rgba(155,80,25,0.4)"  />
+      </g>
     </svg>
   );
 }
@@ -1183,27 +1198,25 @@ function EyeOffIcon() {
 
 const DEMO_SCREENS: { id: string; label: string }[] = [
   { id: "scanner",  label: "Scan QR" },
-  { id: "login",    label: "Sign In" },
   { id: "settings", label: "Settings" },
 ];
 
 const MOCK_MSGS: ChatMessage[] = [
-  { id: "1", role: "agent",  text: "Hi! What can I get you today?",                                awaitingConfirmation: false },
-  { id: "2", role: "user",   text: "I'd like a cheeseburger",                                      awaitingConfirmation: false },
-  { id: "3", role: "agent",  text: "Great! Would you like to add fries and a drink as a combo for $2 more?", awaitingConfirmation: false },
-  { id: "4", role: "user",   text: "Yes please, medium size",                                      awaitingConfirmation: false },
-  { id: "5", role: "agent",  text: "Perfect. I've added a Cheeseburger Combo (medium) to your order. Anything else?", awaitingConfirmation: false },
+  { id: "1", role: "agent",  text: "Hey! Welcome to Raising Cane's. What can I get you today?",                             awaitingConfirmation: false },
+  { id: "2", role: "user",   text: "I'll have The Box Combo",                                                                awaitingConfirmation: false },
+  { id: "3", role: "agent",  text: "Love it! The Box Combo comes with 4 chicken fingers, crinkle-cut fries, coleslaw, Cane's sauce, and Texas toast. Want to add an extra Cane's sauce for $0.50?", awaitingConfirmation: false },
+  { id: "4", role: "user",   text: "Yes please",                                                                             awaitingConfirmation: false },
+  { id: "5", role: "agent",  text: "Perfect. I've added The Box Combo with an extra Cane's Sauce. Anything else?",          awaitingConfirmation: false },
 ];
 
 const MOCK_CART: Cart = {
   lines: [
-    { lineId: "L1", itemId: "cb",  name: "Cheeseburger",   qty: 1, options: { size: ["Large"], extras: ["Extra cheese"] }, lineTotal: 7.99 },
-    { lineId: "L2", itemId: "fr",  name: "Medium Fries",   qty: 1, options: {},                               lineTotal: 2.99 },
-    { lineId: "L3", itemId: "dr",  name: "Fountain Drink", qty: 1, options: { size: ["Medium"] },             lineTotal: 1.49 },
+    { lineId: "L1", itemId: "box", name: "The Box Combo",      qty: 1, options: { includes: ["4 Chicken Fingers", "Crinkle-Cut Fries", "Coleslaw", "Texas Toast"] }, lineTotal: 13.49 },
+    { lineId: "L2", itemId: "cs",  name: "Extra Cane's Sauce", qty: 1, options: {},                                                                                   lineTotal: 0.50  },
   ],
-  subtotal: 12.47,
-  tax: 1.25,
-  total: 13.72,
+  subtotal: 13.99,
+  tax: 1.40,
+  total: 15.39,
 };
 
 const MOCK_KIOSK_PAYING: KioskState = {
@@ -1240,8 +1253,6 @@ export function DemoApp() {
 
   const renderScreen = () => {
     switch (screen) {
-      case "login":
-        return <LoginPage />;
       case "settings":
         return (
           <div className="page" style={{ position: "relative" }}>
