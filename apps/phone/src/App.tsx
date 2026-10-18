@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Cart, CartLine, KioskState, SessionEndReason } from "@kiosk-access/shared";
-import { connectSocket, createSession, parseParams } from "./connection.ts";
+import { attachProfile, connectSocket, createSession, parseParams } from "./connection.ts";
 import type { PhoneSocket } from "./connection.ts";
 import type { ChatMessage } from "./store.ts";
 import { usePhone } from "./store.ts";
@@ -77,6 +77,8 @@ export function App() {
         if (cancelled) return;
         socket = connectSocket(sess.sessionId, sess.sessionSecret);
         socketRef.current = socket;
+        // Recognise a returning customer (no login screen). Ordering doesn't wait for it.
+        void attachProfile(sess.sessionId, sess.sessionSecret).then(p => { if (p && !cancelled) store.setProfile(p); });
 
         // Voice controller: sendText callback emits to server and updates store.
         // showTranscript is a no-op — sendText adds the bubble; we avoid duplicates.

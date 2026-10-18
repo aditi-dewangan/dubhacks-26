@@ -18,6 +18,7 @@
     "test:agent": "corepack pnpm --filter @kiosk-access/server test:agent",
     "test:bridge": "corepack pnpm --filter @kiosk-access/server test:bridge",
     "test:sdk": "corepack pnpm --filter @kiosk-access/sdk test",
+    "test:profiles": "corepack pnpm --filter @kiosk-access/server test:profiles",
     "agent:check": "corepack pnpm --filter @kiosk-access/server agent:check",
     "agent:eval": "corepack pnpm --filter @kiosk-access/server agent:eval"
   }
