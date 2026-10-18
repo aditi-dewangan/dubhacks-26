@@ -5,6 +5,16 @@ const list = (xs: string[]) => (xs.length > 1 ? `${xs.slice(0, -1).join(", ")} a
 
 const PLACES = { food: "Harbor Burger", clinic: "Evergreen Family Clinic", cinema: "Starlight Cinemas", transit: "MetroLink" } as const;
 
+/** The name of the place this kiosk belongs to. */
+export const placeName = (state: KioskState | null) => PLACES[state?.kind ?? "food"];
+
+/** Did the customer say yes to "Do you want to start ordering?" */
+export function wantsToStart(answer: string): boolean {
+  const a = answer.toLowerCase();
+  return /\b(yes|yeah|yep|yup|sure|ok|okay|start|ready|let'?s go|go ahead|please|i do|of course)\b/.test(a) &&
+    !/\b(no|nope|not|don'?t|wait|later)\b/.test(a);
+}
+
 /** What the assistant says first, right after the customer taps to start. Short: the sections, then one question. */
 export function greeting(state: KioskState | null, profile?: PhoneProfile | null): string {
   const kind = state?.kind ?? "food";

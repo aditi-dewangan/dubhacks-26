@@ -119,6 +119,24 @@ export function createAgentVoice(
       }
     },
     /** Speaks text regardless of enabled state — for explicit user-triggered repeats. */
+    /**
+     * Asks one question and returns what the customer said, without sending it to the assistant
+     * (e.g. "Do you want to start ordering?" on the welcome screen). null if nothing was heard.
+     */
+    async ask(question: string): Promise<string | null> {
+      if (disposed) return null;
+      const current = ++generation;
+      callbacks.setSpeaking?.(true);
+      try { await speech.speak(question, "en-US", getRate()); }
+      catch { /* speaking failed; still listen */ }
+      finally { if (current === generation) callbacks.setSpeaking?.(false); }
+      if (current !== generation || disposed) return null;
+      await new Promise((r) => setTimeout(r, AFTER_SPEAKING_MS));
+      callbacks.setListening?.(true);
+      try { return await speech.listen(); }
+      catch { return null; }
+      finally { callbacks.setListening?.(false); }
+    },
     async speakFeedback(text: string) {
       if (disposed || !text.trim()) return;
       const current = ++generation;

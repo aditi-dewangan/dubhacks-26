@@ -7,7 +7,7 @@ import type { ChatMessage } from "./store.ts";
 import { usePhone } from "./store.ts";
 import { createAgentVoice } from "./agentSpeech.ts";
 import { bindVoiceSocket } from "./voiceSocket.ts";
-import { greeting } from "./greeting.ts";
+import { greeting, placeName, wantsToStart } from "./greeting.ts";
 import { speechSupport } from "./speech.ts";
 import { enableVoiceFallback, unlockAudio } from "./voiceFallback.ts";
 import { CAMERA_PROBLEM_TEXT, CameraError, startQrScanner, type CameraProblem } from "./qrScanner.ts";
@@ -67,6 +67,8 @@ export function App() {
   const [agentThinking, setAgentThinking] = useState(false);
   const [agentSpeaking, setAgentSpeaking] = useState(false);
   const [voiceListening, setVoiceListening] = useState(false);
+  // Welcome screen: the assistant asks "Do you want to start ordering?" before the chat opens.
+  const [welcome, setWelcome] = useState<WelcomeStatus>("idle");
   const [settingsOpen,  setSettingsOpen]  = useState(false);
   const [cartReviewOpen, setCartReviewOpen] = useState(false);
 
@@ -183,9 +185,8 @@ export function App() {
     if (last) voiceRef.current?.speakFeedback(last.text);
   }, []);
 
-  // The customer's first tap. Browsers only allow speech and the mic after a tap, so the
-  // greeting is spoken here; after it, the mic reopens by itself after every reply.
-  const startOrdering = useCallback((withVoice: boolean) => {
+  // Opens the chat. With voice, the greeting is spoken and the mic then reopens by itself after every reply.
+  const enterChat = useCallback((withVoice: boolean) => {
     const store = usePhone.getState();
     store.setOrderingStarted(true);
     const hello = greeting(store.kioskState, store.profile);
@@ -196,6 +197,20 @@ export function App() {
       void voiceRef.current?.greet(hello);
     }
   }, []);
+
+  // The customer's first tap on the welcome screen (browsers only allow speech after a tap):
+  // the assistant asks whether to start, and a yes opens the chat.
+  const askToStart = useCallback(async () => {
+    const voice = voiceRef.current;
+    if (!voice) { enterChat(false); return; }
+    unlockAudio();
+    voice.setEnabled(true);
+    setWelcome("asking");
+    const answer = await voice.ask(`Welcome to ${placeName(usePhone.getState().kioskState)}. Do you want to start ordering?`);
+    if (answer && wantsToStart(answer)) { setWelcome("idle"); enterChat(true); return; }
+    setWelcome(answer ? "declined" : "unheard");
+    if (answer) void voice.speakFeedback("Okay. Tap Start ordering whenever you're ready.");
+  }, [enterChat]);
 
   // ---- Screen routing ----
   if (phase === "init") return null;
@@ -219,11 +234,16 @@ export function App() {
   if (ks === "complete") return <OrderCompleteScreen kioskState={kioskState} />;
   if (awaitingConfirmation) return <ConfirmOrderScreen cart={kioskState?.cart ?? null} onConfirm={sendConfirm} />;
   if (!orderingStarted) return (
-    <StartScreen
-      kioskId={kioskState?.kioskId ?? ""}
-      onStartVoice={() => startOrdering(true)}
-      onStartText={() => startOrdering(false)}
-    />
+    <>
+      <StartScreen
+        place={placeName(kioskState)}
+        status={voiceListening ? "listening" : agentSpeaking ? "asking" : welcome}
+        onStartVoice={() => { void askToStart(); }}
+        onStartText={() => enterChat(false)}
+        onProfile={() => setSettingsOpen(true)}
+      />
+      {settingsOpen && <SettingsSheet onClose={() => setSettingsOpen(false)} />}
+    </>
   );
 
   return (
@@ -315,7 +335,7 @@ function QrScannerScreen() {
 
   return (
     <div className="page" role="main" aria-label="Scan the kiosk QR code">
-      <p className="page-brand" aria-hidden="true">Kiosk Access</p>
+      <header className="welcome-top"><AppLogo /></header>
       <div className="scanner-inner">
         <h1 style={{ fontSize: "1.625rem", fontWeight: 800, color: "var(--text)", alignSelf: "flex-start", letterSpacing: "-0.02em" }}>
           Scan the kiosk
@@ -390,6 +410,8 @@ function QrScannerScreen() {
           {codeError && <p className="code-entry-error" role="alert">{codeError}</p>}
         </form>
 
+        <a className="profile-link" href="/profile">My profile &amp; order history</a>
+
       </div>
     </div>
   );
@@ -418,54 +440,62 @@ function ConnectingScreen() {
 // StartScreen
 // ============================================================
 
-function StartScreen({ kioskId, onStartVoice, onStartText }: {
-  kioskId: string;
+type WelcomeStatus = "idle" | "asking" | "listening" | "declined" | "unheard";
+
+const WELCOME_STATUS: Record<WelcomeStatus, string> = {
+  idle: "Tap anywhere to start talking.",
+  asking: "Speaking…",
+  listening: "Listening… say yes to start.",
+  declined: "No problem. Tap Start ordering whenever you're ready.",
+  unheard: "I didn't catch that. Tap Start ordering to try again.",
+};
+
+function StartScreen({ place, status, onStartVoice, onStartText, onProfile }: {
+  place: string;
+  status: WelcomeStatus;
   onStartVoice(): void;
   onStartText(): void;
+  onProfile(): void;
 }) {
   const hasSpeech = speechSupport().recognition;
+  const busy = status === "asking" || status === "listening";
   // A tap anywhere starts voice ordering (the button keeps focus, so a VoiceOver double-tap anywhere works too).
   const tapAnywhere = (e: React.MouseEvent) => {
-    if (hasSpeech && !(e.target as HTMLElement).closest("button")) onStartVoice();
+    if (hasSpeech && !busy && !(e.target as HTMLElement).closest("button, a")) onStartVoice();
   };
   return (
-    <div className="page" role="main" onClick={tapAnywhere}>
-      <p className="sr-only" aria-live="polite">
-        Connected to kiosk{kioskId ? ` ${kioskId}` : ""}. Ready to take your order.
-      </p>
-      <div className="start-inner">
+    <div className="page welcome-page" role="main" onClick={tapAnywhere}>
+      <header className="welcome-top">
         <AppLogo />
+        <span className="place-chip" role="status"><span className="place-dot" aria-hidden="true" />{place}</span>
+      </header>
 
-        <ProfileCard />
-
-        <div className="panel panel-sage" role="status" style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-          <CheckmarkIcon size={15} color="var(--sage-text)" />
-          Connected{kioskId ? ` · ${kioskId}` : ""}
+      <div className="welcome-hero">
+        <div className={`voice-orb${busy ? ` voice-orb-${status}` : ""}`} aria-hidden="true">
+          <span /><span /><span />
+          <MicIcon active={status === "listening"} size={40} />
         </div>
+        <h1 className="welcome-heading">Hi! Ready to order?</h1>
+        <p className="welcome-sub">Just talk. I&apos;ll tap through the kiosk for you and read everything back before you pay.</p>
+        <p className="welcome-status" aria-live="polite">{hasSpeech ? WELCOME_STATUS[status] : "Type your order below."}</p>
+      </div>
 
-        {/* Food media — replace src with real photography when available */}
-        <div className="start-media" aria-hidden="true">
-          <FoodIllustration />
-        </div>
+      <ProfileCard />
 
-        <div className="start-text">
-          <h1 className="start-heading">Your order,<br />your way.</h1>
-          <p className="start-sub">Tell us what you&apos;re craving. We&apos;ll handle the rest.</p>
-          {hasSpeech && <p className="start-sub"><strong>Tap anywhere to start talking.</strong></p>}
-        </div>
-
-        <div className="start-actions">
-          {hasSpeech && (
-            <button className="btn btn-primary btn-xl" type="button" onClick={onStartVoice} autoFocus>
-              <MicIcon active={false} size={30} />
-              Start voice ordering
-            </button>
-          )}
-          <button className="btn btn-outline" type="button" onClick={onStartText}>
-            <KeyboardIcon />
-            Type instead
+      <div className="welcome-actions">
+        {hasSpeech && (
+          <button className="btn btn-primary btn-xl" type="button" onClick={onStartVoice} disabled={busy} autoFocus>
+            <MicIcon active={false} size={26} />
+            Start ordering
           </button>
-        </div>
+        )}
+        <button className="btn btn-outline" type="button" onClick={onStartText}>
+          <KeyboardIcon />
+          Type instead
+        </button>
+        <button className="btn-ghost welcome-profile" type="button" onClick={onProfile}>
+          My profile &amp; order history
+        </button>
       </div>
     </div>
   );
@@ -517,7 +547,7 @@ function ConversationScreen({
 
   const brandName = kioskState?.kioskId
     ? kioskState.kioskId.replace(/[-_]/g, " ").replace(/\b\w/g, c => c.toUpperCase())
-    : "Kiosk Access";
+    : "AllScreen";
 
   return (
     <div className="conv-page" role="main" aria-label="Ordering conversation">
@@ -635,7 +665,7 @@ function ConfirmOrderScreen({ cart, onConfirm }: { cart: Cart | null; onConfirm(
 
   return (
     <div className="confirm-page" role="main" aria-label="Review your order">
-      <p className="page-brand" aria-hidden="true">Kiosk Access</p>
+      <header className="welcome-top"><AppLogo /></header>
       <div className="confirm-inner">
         <h1 className="confirm-heading">Review your order</h1>
 
@@ -725,7 +755,7 @@ function PayAtReaderScreen({ kioskState, onEnd, onRepeat }: { kioskState: KioskS
       <p className="sr-only" aria-live="assertive">
         Please pay at the kiosk reader{total != null ? `, total $${total.toFixed(2)}` : ""}.
       </p>
-      <p className="page-brand" aria-hidden="true">Kiosk Access</p>
+      <header className="welcome-top"><AppLogo /></header>
       <div className="centred-page">
         <div className="pay-icon-wrap" aria-hidden="true"><ReaderIcon /></div>
         <h1>Pay at the reader</h1>
@@ -759,7 +789,7 @@ function OrderCompleteScreen({ kioskState }: { kioskState: KioskState | null }) 
       <p className="sr-only" aria-live="polite">
         Order complete{orderNumber ? `, order number ${orderNumber}` : ""}.
       </p>
-      <p className="page-brand" aria-hidden="true">Kiosk Access</p>
+      <header className="welcome-top"><AppLogo /></header>
       <div className="centred-page">
         <div className="complete-check" aria-hidden="true">
           <CheckmarkIcon size={36} color="var(--sage-text)" />
@@ -785,7 +815,7 @@ function SessionEndedScreen({ heading, body, recovery }: EndInfo) {
   return (
     <div className="page" role="main">
       <p className="sr-only" aria-live="polite">{heading}. {body}</p>
-      <p className="page-brand" aria-hidden="true">Kiosk Access</p>
+      <header className="welcome-top"><AppLogo /></header>
       <div className="centred-page">
         <h1 tabIndex={-1}>{heading}</h1>
         <p>{body}</p>
@@ -807,7 +837,7 @@ function CantConnectScreen({ code, detail }: { code: string; detail?: string }) 
   return (
     <div className="page" role="main">
       <p className="sr-only" aria-live="assertive">{info.heading}. {info.body}</p>
-      <p className="page-brand" aria-hidden="true">Kiosk Access</p>
+      <header className="welcome-top"><AppLogo /></header>
       <div className="centred-page">
         <h1 tabIndex={-1}>{info.heading}</h1>
         <div className="panel panel-peach">{info.body}</div>
@@ -1223,34 +1253,6 @@ function KeyboardIcon() {
 }
 
 /** Food illustration used on the Start screen — swap for real photography later. */
-function FoodIllustration() {
-  return (
-    <svg width="140" height="140" viewBox="0 0 140 140" fill="none" aria-hidden="true" focusable="false">
-      {/* Plate shadow */}
-      <ellipse cx="70" cy="118" rx="42" ry="6" fill="rgba(72,86,150,0.07)" />
-      {/* Plate */}
-      <ellipse cx="70" cy="110" rx="40" ry="8" fill="#FEF3E2" stroke="#F5C370" strokeWidth="1.5" />
-      {/* Bottom bun */}
-      <path d="M34 92c0 10 16.268 18 36 18s36-8 36-18H34z" fill="#F9C784" stroke="#F5C370" strokeWidth="1.5" />
-      {/* Lettuce frills */}
-      <path d="M32 86c5-5 8-2 12 1 4-5 8-5 12 0 4-5 8-4 12 0 4-5 8-4 12 0 4-5 8-3 12 2H32z" fill="#A8D8A8" />
-      {/* Cheese slice */}
-      <path d="M30 82h80l-4 8H34l-4-8z" fill="#F9C784" stroke="#F5C370" strokeWidth="1" />
-      {/* Patty */}
-      <rect x="32" y="72" width="76" height="12" rx="4" fill="#C48A5A" />
-      {/* Patty shading */}
-      <rect x="32" y="72" width="76" height="5" rx="4" fill="rgba(255,255,255,0.08)" />
-      {/* Top bun */}
-      <path d="M36 70C36 52 52.536 38 70 38c17.464 0 34 14 34 32H36z" fill="#F9C784" stroke="#F5C370" strokeWidth="1.5" />
-      {/* Sesame seeds */}
-      <ellipse cx="58" cy="50" rx="3.5" ry="2" fill="#F5C370" transform="rotate(-15 58 50)" />
-      <ellipse cx="70" cy="44" rx="3.5" ry="2" fill="#F5C370" transform="rotate(5 70 44)" />
-      <ellipse cx="83" cy="49" rx="3.5" ry="2" fill="#F5C370" transform="rotate(-8 83 49)" />
-      <ellipse cx="64" cy="57" rx="3" ry="1.8" fill="#F5C370" transform="rotate(10 64 57)" />
-      <ellipse cx="76" cy="54" rx="3" ry="1.8" fill="#F5C370" transform="rotate(-5 76 54)" />
-    </svg>
-  );
-}
 
 // ============================================================
 // AppLogo — used on splash-style screens (login, connecting,
@@ -1259,18 +1261,22 @@ function FoodIllustration() {
 
 function AppLogo() {
   return (
-    <div className="app-logo-wrap" aria-hidden="true">
-      <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
-        <rect width="32" height="32" rx="8" fill="var(--indigo)" />
-        {/* Mic body */}
-        <rect x="12" y="6" width="8" height="12" rx="4" fill="white" />
-        {/* Mic arc */}
-        <path d="M8 17c0 4.418 3.582 8 8 8s8-3.582 8-8" stroke="white" strokeWidth="2" strokeLinecap="round" />
-        {/* Stand */}
-        <line x1="16" y1="25" x2="16" y2="28" stroke="white" strokeWidth="2" strokeLinecap="round" />
-        <line x1="12" y1="28" x2="20" y2="28" stroke="white" strokeWidth="2" strokeLinecap="round" />
+    <div className="app-logo-wrap" aria-label="AllScreen">
+      <svg width="34" height="34" viewBox="0 0 34 34" fill="none" aria-hidden="true">
+        <defs>
+          <linearGradient id="allscreen-mark" x1="0" y1="0" x2="34" y2="34" gradientUnits="userSpaceOnUse">
+            <stop offset="0" stopColor="#485696" />
+            <stop offset="1" stopColor="#7C6FD6" />
+          </linearGradient>
+        </defs>
+        <rect width="34" height="34" rx="10" fill="url(#allscreen-mark)" />
+        {/* A voice wave: talking to any screen */}
+        <rect x="8" y="14" width="3" height="6" rx="1.5" fill="white" />
+        <rect x="13" y="10" width="3" height="14" rx="1.5" fill="white" />
+        <rect x="18" y="7" width="3" height="20" rx="1.5" fill="#F9C784" />
+        <rect x="23" y="12" width="3" height="10" rx="1.5" fill="white" />
       </svg>
-      <span className="app-logo-name">Kiosk Access</span>
+      <span className="app-logo-name">All<span>Screen</span></span>
     </div>
   );
 }
@@ -1386,7 +1392,7 @@ export function DemoApp() {
       case "connecting":
         return <ConnectingScreen />;
       case "start":
-        return <StartScreen kioskId="store42-kiosk1" onStartVoice={noop} onStartText={noop} />;
+        return <StartScreen place="Harbor Burger" status="idle" onStartVoice={noop} onStartText={noop} onProfile={noop} />;
       case "conversation":
         return (
           <>
