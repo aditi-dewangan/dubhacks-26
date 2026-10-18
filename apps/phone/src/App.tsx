@@ -489,6 +489,7 @@ export function QrScannerScreen() {
           <MenuCarousel compact />
         </div>
 
+
       </div>
       {helpOpen && (
         <PermissionHelpSheet device="camera" onClose={() => setHelpOpen(false)} onRetry={() => { setHelpOpen(false); void startCamera(); }} />
@@ -1490,53 +1491,14 @@ function EyeOffIcon() {
 // ============================================================
 
 const DEMO_SCREENS: { id: string; label: string }[] = [
-  { id: "scanner",  label: "Scan QR" },
+  { id: "scanner",  label: "Home" },
   { id: "settings", label: "Settings" },
 ];
-
-const MOCK_MSGS: ChatMessage[] = [
-  { id: "1", role: "agent",  text: "Hey! Welcome to Raising Cane's. What can I get you today?",                             awaitingConfirmation: false },
-  { id: "2", role: "user",   text: "I'll have The Box Combo",                                                                awaitingConfirmation: false },
-  { id: "3", role: "agent",  text: "Love it! The Box Combo comes with 4 chicken fingers, crinkle-cut fries, coleslaw, Cane's sauce, and Texas toast. Want to add an extra Cane's sauce for $0.50?", awaitingConfirmation: false },
-  { id: "4", role: "user",   text: "Yes please",                                                                             awaitingConfirmation: false },
-  { id: "5", role: "agent",  text: "Perfect. I've added The Box Combo with an extra Cane's Sauce. Anything else?",          awaitingConfirmation: false },
-];
-
-const MOCK_CART: Cart = {
-  lines: [
-    { lineId: "L1", itemId: "box", name: "The Box Combo",      qty: 1, options: { includes: ["4 Chicken Fingers", "Crinkle-Cut Fries", "Coleslaw", "Texas Toast"] }, lineTotal: 13.49 },
-    { lineId: "L2", itemId: "cs",  name: "Extra Cane's Sauce", qty: 1, options: {},                                                                                   lineTotal: 0.50  },
-  ],
-  subtotal: 13.99,
-  tax: 1.40,
-  total: 15.39,
-};
-
-const MOCK_KIOSK_PAYING: KioskState = {
-  kioskId: "store42-kiosk1",
-  screen: "paying",
-  title: "Payment",
-  buttons: [],
-  cart: MOCK_CART,
-  sessionActive: true,
-};
-
-const MOCK_KIOSK_COMPLETE: KioskState = {
-  kioskId: "store42-kiosk1",
-  screen: "complete",
-  title: "Thank you",
-  buttons: [],
-  cart: MOCK_CART,
-  orderNumber: "142",
-  sessionActive: true,
-};
 
 export function DemoApp() {
   const initialScreen = new URLSearchParams(window.location.search).get("demo") || "scanner";
   const [screen, setScreen] = useState(initialScreen);
-  const [settingsOpen, setSettingsOpen] = useState(false);
 
-  // Add/remove demo-mode class so CSS can offset scrollable content above the picker
   useEffect(() => {
     document.documentElement.classList.add("demo-mode");
     return () => document.documentElement.classList.remove("demo-mode");
@@ -1555,8 +1517,6 @@ export function DemoApp() {
         );
       case "scanner":
       default:
-        // QrScannerScreen navigates via window.location.href when it reads a real code,
-        // which reloads the page at /k/:kioskId?t=... and kicks off the real App flow.
         return <QrScannerScreen />;
     }
   };
@@ -1567,7 +1527,7 @@ export function DemoApp() {
         {renderScreen()}
       </div>
 
-      {/* Floating screen picker */}
+      {/* Bottom nav */}
       <div style={{
         position: "fixed",
         bottom: 0, left: 0, right: 0,
@@ -1584,12 +1544,12 @@ export function DemoApp() {
         <p style={{ color: "rgba(255,255,255,0.45)", fontSize: "0.7rem", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>
           AllScreen
         </p>
-        <div style={{ display: "flex", gap: "0.5rem", overflowX: "auto", paddingBottom: "0.25rem" }}>
+        <div style={{ display: "flex", gap: "0.5rem" }}>
           {DEMO_SCREENS.map(s => (
             <button
               key={s.id}
               type="button"
-              onClick={() => { setSettingsOpen(false); setScreen(s.id); }}
+              onClick={() => setScreen(s.id)}
               style={{
                 flexShrink: 0,
                 padding: "0.4rem 0.875rem",
