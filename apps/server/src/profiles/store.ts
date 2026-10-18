@@ -13,7 +13,24 @@ export interface Profile {
   lastSeenAt: string;
   /** Ordering sessions this phone has started, including the current one. */
   visits: number;
+  /** Completed orders, newest last (a few per place). */
+  orders?: SavedOrder[];
 }
+
+/** A completed order, kept so the customer can reorder it next time at the same place. */
+export interface SavedOrder {
+  /** The restaurant or location: the kiosk id without its "-kioskN" suffix. */
+  place: string;
+  kioskId: string;
+  at: string;
+  lines: { itemId: string; name: string; qty: number; options: Record<string, string[]> }[];
+  total: number;
+}
+
+const ORDERS_PER_PLACE = 3;
+
+/** "store42-kiosk1" and "store42-kiosk2" are the same restaurant. */
+export const placeOf = (kioskId: string) => kioskId.replace(/-kiosk\d+$/i, "");
 
 const hash = (secret: string) => createHash("sha256").update(secret).digest("hex");
 
@@ -85,6 +102,24 @@ export function createProfileStore(opts: { file?: string; now?: () => Date } = {
     forSession(sessionId: string): Profile | null {
       const id = bySession.get(sessionId);
       return id ? profiles.get(id) ?? null : null;
+    },
+
+    /** Remembers a completed order for the profile using this session. */
+    saveOrder(sessionId: string, order: Omit<SavedOrder, "place" | "at">): SavedOrder | null {
+      const profile = this.forSession(sessionId);
+      if (!profile || !order.lines.length) return null;
+      const saved: SavedOrder = { ...order, place: placeOf(order.kioskId), at: now().toISOString() };
+      const others = (profile.orders ?? []).filter((o) => o.place !== saved.place);
+      const here = (profile.orders ?? []).filter((o) => o.place === saved.place);
+      profile.orders = [...others, ...here.slice(-(ORDERS_PER_PLACE - 1)), saved];
+      void save();
+      return saved;
+    },
+
+    /** The most recent completed order at this kiosk's restaurant. */
+    lastOrder(profile: Profile, kioskId: string): SavedOrder | null {
+      const place = placeOf(kioskId);
+      return [...(profile.orders ?? [])].reverse().find((o) => o.place === place) ?? null;
     },
 
     detach(sessionId: string) {

@@ -3,11 +3,13 @@
 
 import { timingSafeEqual } from "node:crypto";
 import { Router, type Request } from "express";
-import type { Profile, ProfileStore } from "./store.ts";
+import type { Profile, ProfileStore, SavedOrder } from "./store.ts";
 
 export interface ProfileRouteDeps {
   store: ProfileStore;
-  getSession(sessionId: string): { sessionSecret: string; ended: boolean } | undefined;
+  getSession(sessionId: string): { sessionSecret: string; ended: boolean; kioskId: string } | undefined;
+  /** "a double cheeseburger and a large vanilla shake" */
+  describeOrder?(order: SavedOrder): string;
 }
 
 const bearer = (req: Request) => req.get("authorization")?.match(/^Bearer (.+)$/)?.[1];
@@ -22,7 +24,7 @@ function sameSecret(a: string, b: unknown) {
   return x.length === y.length && timingSafeEqual(x, y);
 }
 
-export function createProfileRoutes({ store, getSession }: ProfileRouteDeps) {
+export function createProfileRoutes({ store, getSession, describeOrder }: ProfileRouteDeps) {
   const routes = Router();
 
   // First visit on this phone: make a profile. The token is returned once.
@@ -54,7 +56,13 @@ export function createProfileRoutes({ store, getSession }: ProfileRouteDeps) {
       res.status(403).json({ error: "bad_session", message: "That ordering session isn't valid." });
       return;
     }
-    res.json(view(store.attach(sessionId as string, profile)));
+    store.attach(sessionId as string, profile);
+    // Last time at this restaurant, so the phone can offer "the same again?"
+    const last = store.lastOrder(profile, session.kioskId);
+    res.json({
+      ...view(profile),
+      lastOrder: last ? { spoken: describeOrder?.(last) ?? last.lines.map((l) => `${l.qty} ${l.name}`).join(" and "), total: last.total, at: last.at } : null,
+    });
   });
 
   return routes;

@@ -12,16 +12,16 @@ let server: Server;
 let base: string;
 let store: ProfileStore;
 let file: string;
-const sessions = new Map<string, { sessionSecret: string; ended: boolean }>();
+const sessions = new Map<string, { sessionSecret: string; ended: boolean; kioskId: string }>();
 
 beforeEach(async () => {
   file = join(mkdtempSync(join(tmpdir(), "profiles-")), "profiles.json");
   store = createProfileStore({ file });
   sessions.clear();
-  sessions.set("s1", { sessionSecret: "secret-1", ended: false });
+  sessions.set("s1", { sessionSecret: "secret-1", ended: false, kioskId: "store42-kiosk1" });
   const app = express();
   app.use(express.json());
-  app.use(createProfileRoutes({ store, getSession: (id) => sessions.get(id) }));
+  app.use(createProfileRoutes({ store, getSession: (id) => sessions.get(id), describeOrder: (o) => o.lines.map((l) => `${l.qty} ${l.name.toLowerCase()}`).join(" and ") }));
   server = createServer(app);
   await new Promise<void>((r) => server.listen(0, r));
   base = `http://localhost:${(server.address() as AddressInfo).port}`;
@@ -83,14 +83,14 @@ describe("remember this phone", () => {
 
     // Attaching the same session again doesn't count twice; a new session does.
     await call("/api/profiles/attach", { token: p.profileToken, body: { sessionId: "s1", sessionSecret: "secret-1" } });
-    sessions.set("s2", { sessionSecret: "secret-2", ended: false });
+    sessions.set("s2", { sessionSecret: "secret-2", ended: false, kioskId: "store42-kiosk1" });
     const second = await call("/api/profiles/attach", { token: p.profileToken, body: { sessionId: "s2", sessionSecret: "secret-2" } });
     expect(await second.json()).toMatchObject({ visits: 2, returning: true });
   });
 
   it("refuses an ended session", async () => {
     const p = await newProfile();
-    sessions.set("s1", { sessionSecret: "secret-1", ended: true });
+    sessions.set("s1", { sessionSecret: "secret-1", ended: true, kioskId: "store42-kiosk1" });
     expect((await call("/api/profiles/attach", { token: p.profileToken, body: { sessionId: "s1", sessionSecret: "secret-1" } })).status).toBe(403);
   });
 
@@ -100,5 +100,33 @@ describe("remember this phone", () => {
     const restarted = createProfileStore({ file });
     expect(restarted.verify(p.profileToken)?.profileId).toBe(p.profileId);
     expect(restarted.verify(`${p.profileId}.wrong`)).toBeNull();
+  });
+
+  it("remembers the last order per restaurant and offers it on the next visit there", async () => {
+    const p = await newProfile();
+    const attach = (sessionId: string, sessionSecret: string) =>
+      call("/api/profiles/attach", { token: p.profileToken, body: { sessionId, sessionSecret } });
+
+    expect(await (await attach("s1", "secret-1")).json()).toMatchObject({ lastOrder: null });
+    const shake = { itemId: "vanilla_shake", name: "Vanilla Shake", qty: 1, options: { size: ["large"] } };
+    expect(store.saveOrder("s1", { kioskId: "store42-kiosk1", lines: [shake], total: 5.49 })?.place).toBe("store42");
+
+    // Same restaurant, a different kiosk there: offered. Another place: not.
+    sessions.set("s2", { sessionSecret: "secret-2", ended: false, kioskId: "store42-kiosk2" });
+    expect(await (await attach("s2", "secret-2")).json()).toMatchObject({ lastOrder: { spoken: "1 vanilla shake", total: 5.49 } });
+    sessions.set("s3", { sessionSecret: "secret-3", ended: false, kioskId: "clinic-kiosk1" });
+    expect(await (await attach("s3", "secret-3")).json()).toMatchObject({ lastOrder: null });
+  });
+
+  it("keeps only the newest orders, and nothing for a session without a profile", async () => {
+    const p = await newProfile();
+    await call("/api/profiles/attach", { token: p.profileToken, body: { sessionId: "s1", sessionSecret: "secret-1" } });
+    for (const total of [1, 2, 3, 4]) {
+      store.saveOrder("s1", { kioskId: "store42-kiosk1", lines: [{ itemId: "cookie", name: "Cookie", qty: total, options: {} }], total });
+    }
+    const profile = store.forSession("s1")!;
+    expect(profile.orders?.map((o) => o.total)).toEqual([2, 3, 4]);
+    expect(store.lastOrder(profile, "store42-kiosk1")?.total).toBe(4);
+    expect(store.saveOrder("no-profile", { kioskId: "store42-kiosk1", lines: [], total: 0 })).toBeNull();
   });
 });

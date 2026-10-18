@@ -1,10 +1,18 @@
 import { menu, type KioskState } from "@kiosk-access/shared";
+import type { PhoneProfile } from "./connection.ts";
 
 const list = (xs: string[]) => (xs.length > 1 ? `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}` : xs.join(""));
 
+const PLACES = { food: "Harbor Burger", clinic: "Evergreen Family Clinic", cinema: "Starlight Cinemas", transit: "MetroLink" } as const;
+
 /** What the assistant says first, right after the customer taps to start. Short: the sections, then one question. */
-export function greeting(state: KioskState | null): string {
-  switch (state?.kind ?? "food") {
+export function greeting(state: KioskState | null, profile?: PhoneProfile | null): string {
+  const kind = state?.kind ?? "food";
+  // A returning customer at the same restaurant: offer their last order.
+  if (profile?.lastOrder?.spoken && kind !== "clinic") {
+    return `Welcome back to ${PLACES[kind]}! Last time you had ${profile.lastOrder.spoken}. Would you like the same as last time?`;
+  }
+  switch (kind) {
     case "clinic":
       return "Welcome to Evergreen Family Clinic. I can help you check in for your appointment. Shall we start?";
     case "cinema":

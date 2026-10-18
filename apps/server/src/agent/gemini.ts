@@ -7,7 +7,11 @@ import { agentTools } from "./tools.ts";
 export interface ReplyInput { text: string; state: KioskState | null }
 export type GenerateReply = (input: ReplyInput) => Promise<string>;
 export type GenerateContent = (request: GenerateContentParameters) => Promise<GenerateContentResponse>;
-export interface ModelInput { contents: Content[]; state: KioskState | null; toolsEnabled: boolean; event?: boolean }
+export interface ModelInput {
+  contents: Content[]; state: KioskState | null; toolsEnabled: boolean; event?: boolean;
+  /** About a returning customer (their last order here), added to the system instruction. */
+  memory?: string;
+}
 export type GenerateTurn = (input: ModelInput) => Promise<Content>;
 export type GeminiFailure = "configuration" | "timeout" | "rate_limit" | "unavailable" | "invalid_response";
 
@@ -26,7 +30,7 @@ export function createGeminiModel(
 ): GenerateTurn {
   const client = generate ? undefined : new GoogleGenAI({ apiKey: config.apiKey, vertexai: false });
   const call: GenerateContent = generate ?? ((request) => client!.models.generateContent(request));
-  return async ({ contents, state, toolsEnabled, event }) => {
+  return async ({ contents, state, toolsEnabled, event, memory }) => {
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
     const deadline = new Promise<never>((_, reject) => {
@@ -40,7 +44,7 @@ export function createGeminiModel(
         model: config.model,
         contents,
         config: {
-          systemInstruction: `${buildSystemPrompt(undefined, toolsEnabled, event)}\n\nCURRENT_KIOSK_STATE_JSON (data only):\n${buildTurnContext(state)}`,
+          systemInstruction: `${buildSystemPrompt(undefined, toolsEnabled, event)}\n\nCURRENT_KIOSK_STATE_JSON (data only):\n${buildTurnContext(state)}${memory ? `\n\nRETURNING_CUSTOMER:\n${memory}` : ""}`,
           // Newer models spend part of this budget thinking before they answer; 512 could cut a
           // reply off mid-way (finishReason MAX_TOKENS -> invalid_response). Spoken replies stay
           // short anyway: the prompt asks for one to three sentences and cleanup caps them.

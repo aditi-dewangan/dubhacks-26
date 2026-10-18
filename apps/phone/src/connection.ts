@@ -56,7 +56,13 @@ async function newProfileToken(): Promise<string | null> {
   return profileToken;
 }
 
-export interface PhoneProfile { profileId: string; visits: number; returning: boolean }
+export interface PhoneProfile {
+  profileId: string;
+  visits: number;
+  returning: boolean;
+  /** Their last completed order at this restaurant, if any. */
+  lastOrder?: { spoken: string; total: number; at: string } | null;
+}
 
 /**
  * Links this phone's profile to the ordering session, creating the profile on the first

@@ -92,7 +92,8 @@ export function App() {
             setAgentThinking(true);
           },
           showTranscript: (_text) => { /* sendText adds the bubble */ },
-          showStatus: (_msg) => { /* showStatus errors surfaced via voiceState label */ },
+          // Voice problems ("Tap the microphone to answer") appear in the chat, so they're seen and announced.
+          showStatus: (msg) => usePhone.getState().pushMessage({ id: uid(), role: "agent", text: msg, awaitingConfirmation: false }),
           setSpeaking: (v) => setAgentSpeaking(v),
           setListening: (v) => setVoiceListening(v),
         }, () => speechRateRef.current);
@@ -168,7 +169,7 @@ export function App() {
   const startOrdering = useCallback((withVoice: boolean) => {
     const store = usePhone.getState();
     store.setOrderingStarted(true);
-    const hello = greeting(store.kioskState);
+    const hello = greeting(store.kioskState, store.profile);
     store.pushMessage({ id: uid(), role: "agent", text: hello, awaitingConfirmation: false });
     if (withVoice) {
       voiceRef.current?.setEnabled(true, { handsFree: true });

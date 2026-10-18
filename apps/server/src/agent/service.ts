@@ -12,6 +12,7 @@ export interface AgentDependencies {
   reportFailure?(sessionId: string, code: GeminiFailure): void;
   reportToolCall?(sessionId: string, name: string): void;
   reportLatency?(sessionId: string, kind: "user" | "event", milliseconds: number): void;
+  getMemory?(sessionId: string): string | null;
 }
 
 /** Serialize model history for both user and event turns; unrelated sessions stay independent. */
