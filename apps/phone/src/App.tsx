@@ -12,6 +12,7 @@ import { speechSupport } from "./speech.ts";
 import { enableVoiceFallback, prepareMic, releaseMic, unlockAudio } from "./voiceFallback.ts";
 import { iosNonSafari, permissionSteps, queryPermission, type Device } from "./permissions.ts";
 import { CAMERA_PROBLEM_TEXT, CameraError, startQrScanner, type CameraProblem } from "./qrScanner.ts";
+import { MENU_ITEMS } from "./menuData.ts";
 
 let _id = 0;
 const uid = () => String(++_id);
@@ -478,6 +479,11 @@ export function QrScannerScreen() {
 
         <a className="profile-link" href="/profile">My profile &amp; order history</a>
 
+
+        <div className="scanner-menu-preview">
+          <p className="scanner-menu-heading">Today&apos;s Menu</p>
+          <MenuCarousel compact />
+        </div>
       </div>
       {helpOpen && (
         <PermissionHelpSheet device="camera" onClose={() => setHelpOpen(false)} onRetry={() => { setHelpOpen(false); void startCamera(); }} />
@@ -1443,6 +1449,25 @@ function KeyboardIcon() {
   );
 }
 
+function MenuCarousel({ compact = false }: { compact?: boolean }) {
+  return (
+    <div className="menu-carousel-wrap">
+      {!compact && <p className="menu-carousel-label">Menu</p>}
+      <div className="menu-carousel" role="list" aria-label="Menu items">
+        {MENU_ITEMS.map(item => (
+          <div key={item.id} className="menu-card" role="listitem">
+            <img src={item.image} alt={item.name} className="menu-card-img" loading="lazy" />
+            <div className="menu-card-body">
+              <p className="menu-card-name">{item.name}</p>
+              <p className="menu-card-price">${item.price.toFixed(2)}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /** Food illustration used on the Start screen — swap for real photography later. */
 
 // ============================================================
@@ -1508,27 +1533,25 @@ function EyeOffIcon() {
 
 const DEMO_SCREENS: { id: string; label: string }[] = [
   { id: "scanner",  label: "Scan QR" },
-  { id: "login",    label: "Sign In" },
   { id: "settings", label: "Settings" },
 ];
 
 const MOCK_MSGS: ChatMessage[] = [
-  { id: "1", role: "agent",  text: "Hi! What can I get you today?",                                awaitingConfirmation: false },
-  { id: "2", role: "user",   text: "I'd like a cheeseburger",                                      awaitingConfirmation: false },
-  { id: "3", role: "agent",  text: "Great! Would you like to add fries and a drink as a combo for $2 more?", awaitingConfirmation: false },
-  { id: "4", role: "user",   text: "Yes please, medium size",                                      awaitingConfirmation: false },
-  { id: "5", role: "agent",  text: "Perfect. I've added a Cheeseburger Combo (medium) to your order. Anything else?", awaitingConfirmation: false },
+  { id: "1", role: "agent",  text: "Hey! Welcome to Raising Cane's. What can I get you today?",                             awaitingConfirmation: false },
+  { id: "2", role: "user",   text: "I'll have The Box Combo",                                                                awaitingConfirmation: false },
+  { id: "3", role: "agent",  text: "Love it! The Box Combo comes with 4 chicken fingers, crinkle-cut fries, coleslaw, Cane's sauce, and Texas toast. Want to add an extra Cane's sauce for $0.50?", awaitingConfirmation: false },
+  { id: "4", role: "user",   text: "Yes please",                                                                             awaitingConfirmation: false },
+  { id: "5", role: "agent",  text: "Perfect. I've added The Box Combo with an extra Cane's Sauce. Anything else?",          awaitingConfirmation: false },
 ];
 
 const MOCK_CART: Cart = {
   lines: [
-    { lineId: "L1", itemId: "cb",  name: "Cheeseburger",   qty: 1, options: { size: ["Large"], extras: ["Extra cheese"] }, lineTotal: 7.99 },
-    { lineId: "L2", itemId: "fr",  name: "Medium Fries",   qty: 1, options: {},                               lineTotal: 2.99 },
-    { lineId: "L3", itemId: "dr",  name: "Fountain Drink", qty: 1, options: { size: ["Medium"] },             lineTotal: 1.49 },
+    { lineId: "L1", itemId: "box", name: "The Box Combo",      qty: 1, options: { includes: ["4 Chicken Fingers", "Crinkle-Cut Fries", "Coleslaw", "Texas Toast"] }, lineTotal: 13.49 },
+    { lineId: "L2", itemId: "cs",  name: "Extra Cane's Sauce", qty: 1, options: {},                                                                                   lineTotal: 0.50  },
   ],
-  subtotal: 12.47,
-  tax: 1.25,
-  total: 13.72,
+  subtotal: 13.99,
+  tax: 1.40,
+  total: 15.39,
 };
 
 const MOCK_KIOSK_PAYING: KioskState = {
@@ -1565,8 +1588,6 @@ export function DemoApp() {
 
   const renderScreen = () => {
     switch (screen) {
-      case "login":
-        return <LoginPage />;
       case "settings":
         return (
           <div className="page" style={{ position: "relative" }}>
@@ -1603,7 +1624,7 @@ export function DemoApp() {
         gap: "0.375rem",
       }}>
         <p style={{ color: "rgba(255,255,255,0.45)", fontSize: "0.7rem", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>
-          Kiosk Access
+          AllScreen
         </p>
         <div style={{ display: "flex", gap: "0.5rem", overflowX: "auto", paddingBottom: "0.25rem" }}>
           {DEMO_SCREENS.map(s => (
