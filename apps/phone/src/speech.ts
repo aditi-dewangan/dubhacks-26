@@ -21,8 +21,12 @@ export interface Recognition {
   onend: (() => void) | null;
   start(): void; abort(): void;
 }
+/** Records and transcribes one utterance some other way (see voiceFallback.ts). */
+export type SpeechFallback = (options: ListenOptions) => { result: Promise<string>; cancel(): void };
 export interface SpeechEnvironment {
   recognition?: new () => Recognition;
+  /** Used when `recognition` is missing or the browser refuses it (Chrome on iPhone). */
+  fallback?: SpeechFallback;
   synthesis?: Pick<SpeechSynthesis, "cancel" | "speak"> & Partial<Pick<SpeechSynthesis, "getVoices">>;
   utterance?: new (text: string) => SpeechSynthesisUtterance;
 }
@@ -46,48 +50,80 @@ export function naturalVoice(voices: SpeechSynthesisVoice[], lang = "en-US"): Sp
 export function createSpeechController(environment: () => SpeechEnvironment = browserEnvironment) {
   let cancelListening: (() => void) | undefined;
   let cancelSpeaking: (() => void) | undefined;
-  const stopListening = () => { cancelListening?.(); };
+  // Set once the browser's recognition has failed; then the fallback is used for the rest of the visit.
+  let useFallback = false;
+  let listenId = 0;
+  const stopListening = () => { listenId++; cancelListening?.(); };
   const stopSpeaking = () => { cancelSpeaking?.(); environment().synthesis?.cancel(); };
+
+  const listenBrowser = (Constructor: new () => Recognition, options: ListenOptions): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const recognition = new Constructor();
+      let settled = false;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const finish = (text?: string, error?: SpeechError) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        recognition.onresult = recognition.onerror = recognition.onend = null;
+        cancelListening = undefined;
+        try { recognition.abort(); } catch { /* Already stopped. */ }
+        if (error) reject(error); else resolve(text!);
+      };
+      cancelListening = () => finish(undefined, new SpeechError("cancelled"));
+      recognition.lang = options.lang ?? "en-US";
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      recognition.onresult = ({ results }) => {
+        const text = Array.from(results).filter((result) => result.isFinal)
+          .map((result) => result[0].transcript).join(" ").trim();
+        if (text) finish(text);
+      };
+      recognition.onerror = ({ error }) => finish(undefined, new SpeechError(
+        error === "not-allowed" || error === "service-not-allowed" ? "permission_denied" :
+        error === "audio-capture" ? "audio_unavailable" : error === "no-speech" ? "no_speech" :
+        error === "network" ? "network" : error === "aborted" ? "cancelled" : "failed"));
+      recognition.onend = () => finish(undefined, new SpeechError("no_speech"));
+      timer = setTimeout(() => finish(undefined, new SpeechError("timeout")), options.timeoutMs ?? 15_000);
+      try { recognition.start(); } catch { finish(undefined, new SpeechError("failed")); }
+    });
+
+  const listenFallback = (fallback: SpeechFallback, options: ListenOptions): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const run = fallback(options);
+      let settled = false;
+      const finish = (text?: string, error?: SpeechError) => {
+        if (settled) return;
+        settled = true;
+        cancelListening = undefined;
+        if (error) reject(error); else resolve(text!);
+      };
+      cancelListening = () => { run.cancel(); finish(undefined, new SpeechError("cancelled")); };
+      run.result.then((text) => finish(text),
+        (error) => finish(undefined, error instanceof SpeechError ? error : new SpeechError("failed")));
+    });
+
   return {
     support() {
       const env = environment();
-      return { recognition: Boolean(env.recognition), synthesis: Boolean(env.synthesis && env.utterance) };
+      return { recognition: Boolean(env.recognition || env.fallback), synthesis: Boolean(env.synthesis && env.utterance) };
     },
     stopListening, stopSpeaking,
     stop() { stopListening(); stopSpeaking(); },
     listen(options: ListenOptions = {}): Promise<string> {
       stopListening(); stopSpeaking();
-      const Constructor = environment().recognition;
-      if (!Constructor) return Promise.reject(new SpeechError("unsupported"));
-      return new Promise((resolve, reject) => {
-        const recognition = new Constructor();
-        let settled = false;
-        let timer: ReturnType<typeof setTimeout> | undefined;
-        const finish = (text?: string, error?: SpeechError) => {
-          if (settled) return;
-          settled = true;
-          clearTimeout(timer);
-          recognition.onresult = recognition.onerror = recognition.onend = null;
-          cancelListening = undefined;
-          try { recognition.abort(); } catch { /* Already stopped. */ }
-          if (error) reject(error); else resolve(text!);
-        };
-        cancelListening = () => finish(undefined, new SpeechError("cancelled"));
-        recognition.lang = options.lang ?? "en-US";
-        recognition.continuous = false;
-        recognition.interimResults = false;
-        recognition.onresult = ({ results }) => {
-          const text = Array.from(results).filter((result) => result.isFinal)
-            .map((result) => result[0].transcript).join(" ").trim();
-          if (text) finish(text);
-        };
-        recognition.onerror = ({ error }) => finish(undefined, new SpeechError(
-          error === "not-allowed" || error === "service-not-allowed" ? "permission_denied" :
-          error === "audio-capture" ? "audio_unavailable" : error === "no-speech" ? "no_speech" :
-          error === "network" ? "network" : error === "aborted" ? "cancelled" : "failed"));
-        recognition.onend = () => finish(undefined, new SpeechError("no_speech"));
-        timer = setTimeout(() => finish(undefined, new SpeechError("timeout")), options.timeoutMs ?? 15_000);
-        try { recognition.start(); } catch { finish(undefined, new SpeechError("failed")); }
+      const { recognition, fallback } = environment();
+      if (fallback && (useFallback || !recognition)) return listenFallback(fallback, options);
+      if (!recognition) return Promise.reject(new SpeechError("unsupported"));
+      const id = listenId;
+      return listenBrowser(recognition, options).catch((error: unknown) => {
+        // Chrome on iPhone reports "service-not-allowed" even when the mic itself is allowed.
+        const code = error instanceof SpeechError ? error.code : "failed";
+        if (fallback && id === listenId && (code === "permission_denied" || code === "failed" || code === "network")) {
+          useFallback = true;
+          return listenFallback(fallback, options);
+        }
+        throw error;
       });
     },
     speak(text: string, lang = "en-US", rate = 1.0): Promise<void> {
@@ -122,10 +158,15 @@ export function createSpeechController(environment: () => SpeechEnvironment = br
   };
 }
 
+let registeredFallback: SpeechFallback | null = null;
+/** Turn the speech fallback on (or off with null) for the browser controller. */
+export function setSpeechFallback(fallback: SpeechFallback | null) { registeredFallback = fallback; }
+
 function browserEnvironment(): SpeechEnvironment {
   if (typeof window === "undefined") return {};
   const browser = window as Window & { SpeechRecognition?: new () => Recognition; webkitSpeechRecognition?: new () => Recognition };
   return { recognition: browser.SpeechRecognition ?? browser.webkitSpeechRecognition,
+    fallback: registeredFallback ?? undefined,
     synthesis: window.speechSynthesis, utterance: window.SpeechSynthesisUtterance };
 }
 // Chrome loads its voice list after page load; asking early makes it ready for the first reply.

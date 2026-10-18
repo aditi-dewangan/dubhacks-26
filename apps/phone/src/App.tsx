@@ -9,6 +9,7 @@ import { createAgentVoice } from "./agentSpeech.ts";
 import { bindVoiceSocket } from "./voiceSocket.ts";
 import { greeting } from "./greeting.ts";
 import { speechSupport } from "./speech.ts";
+import { enableVoiceFallback, unlockAudio } from "./voiceFallback.ts";
 import { CAMERA_PROBLEM_TEXT, CameraError, startQrScanner, type CameraProblem } from "./qrScanner.ts";
 
 let _id = 0;
@@ -75,6 +76,7 @@ export function App() {
     let cancelled = false;
     let socket: PhoneSocket | null = null;
     let unbindVoice: (() => void) | null = null;
+    let disableVoiceFallback: (() => void) | null = null;
 
     (async () => {
       try {
@@ -82,6 +84,8 @@ export function App() {
         if (cancelled) return;
         socket = connectSocket(sess.sessionId, sess.sessionSecret);
         socketRef.current = socket;
+        // If the browser can't do speech-to-text (Chrome on iPhone), record and let the server transcribe.
+        disableVoiceFallback = enableVoiceFallback(sess.sessionId, sess.sessionSecret);
         // Recognise a returning customer (no login screen). Ordering doesn't wait for it.
         void attachProfile(sess.sessionId, sess.sessionSecret).then(p => { if (p && !cancelled) store.setProfile(p); });
 
@@ -138,6 +142,7 @@ export function App() {
     return () => {
       cancelled = true;
       unbindVoice?.();
+      disableVoiceFallback?.();
       voiceRef.current?.dispose();
       voiceRef.current = null;
       socket?.disconnect();
@@ -176,6 +181,7 @@ export function App() {
     const hello = greeting(store.kioskState, store.profile);
     store.pushMessage({ id: uid(), role: "agent", text: hello, awaitingConfirmation: false });
     if (withVoice) {
+      unlockAudio(); // iPhones only allow recording audio after a tap
       voiceRef.current?.setEnabled(true, { handsFree: true });
       void voiceRef.current?.greet(hello);
     }
@@ -219,7 +225,7 @@ export function App() {
         agentSpeaking={agentSpeaking}
         voiceListening={voiceListening}
         onSend={sendText}
-        onMicPress={() => voiceRef.current?.listenAndSend()}
+        onMicPress={() => { unlockAudio(); void voiceRef.current?.listenAndSend(); }}
         onEnd={endSession}
         onSettings={() => setSettingsOpen(true)}
         onRepeat={repeatLastMessage}
