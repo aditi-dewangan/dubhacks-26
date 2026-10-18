@@ -23,11 +23,10 @@ export function AccessCard({ qrUrl, status, task }: { qrUrl: string | null; stat
           <div className="qr-placeholder">{status === "online" ? "Loading code" : "Connecting"}</div>
         )}
       </div>
-      <p className="access-body">Scan with your phone camera to finish {task} by voice from your own phone.</p>
-      <div className="access-code" aria-label={`Or go to ${PHONE_HOST} and enter code ${CODE.split("").join(" ")}`}>
-        <span className="access-code-label">Or enter this code at {PHONE_HOST}</span>
-        <span className="access-code-value">{CODE}</span>
-      </div>
+      <p className="access-code-value" aria-label={`Code ${CODE.split("").join(" ")}`}>{CODE}</p>
+      <p className="access-body">
+        Scan with your phone camera, or enter this code at {PHONE_HOST}, to finish {task} by voice from your own phone.
+      </p>
     </aside>
   );
 }

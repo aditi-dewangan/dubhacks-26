@@ -548,14 +548,8 @@ h1, h2, h3, p { margin: 0; }
 .station-name { font-weight: 800; font-size: 1.15em; }
 
 /* Fixed kiosk code under the QR code */
-.access-code {
-  margin-top: 1.1em; padding-top: 1em;
-  border-top: 1px solid var(--line);
-  display: flex; flex-direction: column; align-items: center; gap: 0.3em;
-}
-.access-code-label { color: var(--muted); font-size: 0.9em; }
 .access-code-value {
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  font-size: 1.7em; font-weight: 800; letter-spacing: 0.12em;
-  color: var(--text);
+  font-size: 1.9em; font-weight: 800; letter-spacing: 0.12em;
+  color: var(--text); margin-bottom: 0.25em;
 }
