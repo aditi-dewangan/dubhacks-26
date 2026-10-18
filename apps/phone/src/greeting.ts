@@ -7,6 +7,7 @@ const PLACES = { food: "Harbor Burger", clinic: "Evergreen Family Clinic", cinem
 
 /** The name of the place this kiosk belongs to. */
 export const placeName = (state: KioskState | null) => PLACES[state?.kind ?? "food"];
+export const placeNameForKind = (kind: string | undefined) => PLACES[(kind ?? "food") as keyof typeof PLACES] ?? PLACES.food;
 
 /** Did the customer say yes to "Do you want to start ordering?" */
 export function wantsToStart(answer: string): boolean {

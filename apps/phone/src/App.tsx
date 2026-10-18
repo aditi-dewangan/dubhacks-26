@@ -7,7 +7,7 @@ import type { ChatMessage } from "./store.ts";
 import { usePhone } from "./store.ts";
 import { createAgentVoice } from "./agentSpeech.ts";
 import { bindVoiceSocket } from "./voiceSocket.ts";
-import { greeting, placeName, wantsToStart } from "./greeting.ts";
+import { greeting, placeName, placeNameForKind, wantsToStart } from "./greeting.ts";
 import { speechSupport } from "./speech.ts";
 import { enableVoiceFallback, unlockAudio } from "./voiceFallback.ts";
 import { CAMERA_PROBLEM_TEXT, CameraError, startQrScanner, type CameraProblem } from "./qrScanner.ts";
@@ -295,7 +295,7 @@ function parseQrUrl(raw: string): string | null {
   }
 }
 
-function QrScannerScreen() {
+export function QrScannerScreen() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const stopRef = useRef<(() => void) | null>(null);
   const [camera, setCamera] = useState<"starting" | "on" | CameraProblem>("starting");
@@ -952,27 +952,110 @@ function ProfileEditor() {
   );
 }
 
-function SettingsSheet({ onClose }: { onClose(): void }) {
-  const speechRate    = usePhone(s => s.speechRate);
-  const setSpeechRate = usePhone(s => s.setSpeechRate);
-  const firstFocusRef = useRef<HTMLButtonElement>(null);
-  useEffect(() => { firstFocusRef.current?.focus(); }, []);
-  // "Forget me": the first tap asks, the second deletes.
+/** Past orders on this phone, newest first. */
+function OrderHistory() {
+  const history = usePhone(s => s.profile?.history) ?? [];
+  return (
+    <section className="history" aria-labelledby="history-heading">
+      <p className="settings-label" id="history-heading">Order history</p>
+      {history.length === 0 ? (
+        <p className="profile-card-hint">Nothing yet. Orders you finish at a kiosk will show up here.</p>
+      ) : (
+        <ul className="history-list">
+          {history.map((o, i) => (
+            <li key={`${o.at}-${i}`} className="history-item">
+              <div className="history-head">
+                <span className="history-place">{placeNameForKind(o.kind)}</span>
+                <span className="history-total">${o.total.toFixed(2)}</span>
+              </div>
+              <p className="history-items">{o.lines.map(l => `${l.qty}× ${l.name}`).join(" · ")}</p>
+              <p className="history-date">
+                {new Date(o.at).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
+                {" · "}
+                {new Date(o.at).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}
+              </p>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+/** "Forget me": the first tap asks, the second deletes everything saved on this phone. */
+function ForgetButton({ onDone }: { onDone?(): void }) {
   const [forget, setForget] = useState<"idle" | "confirm" | "deleting" | "done" | "failed">("idle");
   const onForget = async () => {
     if (forget === "idle" || forget === "failed") { setForget("confirm"); return; }
     if (forget !== "confirm") return;
     setForget("deleting");
-    setForget((await deleteProfile()) ? "done" : "failed");
+    const ok = await deleteProfile();
+    setForget(ok ? "done" : "failed");
+    if (ok) onDone?.();
   };
-  const forgetLabel = {
+  const label = {
     idle: "Delete my saved data",
     confirm: "Tap again to delete your name, preferences and past orders",
     deleting: "Deleting…",
     done: "Deleted. This phone will start fresh next time.",
     failed: "Couldn't delete right now. Tap to try again.",
   }[forget];
+  return (
+    <div className="settings-row">
+      <p className="settings-label" id="forget-label">Saved data</p>
+      <button
+        className={forget === "confirm" ? "btn btn-danger" : "btn btn-outline"}
+        type="button"
+        aria-describedby="forget-label"
+        aria-live="polite"
+        disabled={forget === "deleting" || forget === "done"}
+        onClick={onForget}
+      >
+        {label}
+      </button>
+    </div>
+  );
+}
 
+/** allscreen.work/profile: saved preferences and order history, without a kiosk. */
+export function ProfilePage() {
+  const profile = usePhone(s => s.profile);
+  const [status, setStatus] = useState<"loading" | "none" | "ready">("loading");
+  useEffect(() => {
+    void fetchProfile().then(p => {
+      if (p) { applyProfile(p); setStatus("ready"); } else setStatus("none");
+    });
+  }, []);
+  return (
+    <div className="page profile-page" role="main" aria-labelledby="profile-page-title">
+      <header className="welcome-top">
+        <AppLogo />
+        <a className="place-chip" href="/">Scan a kiosk</a>
+      </header>
+      <h1 className="page-title" id="profile-page-title">Your profile</h1>
+      <p className="welcome-sub">Saved on this phone only. No account, no password: AllScreen remembers your orders, not who you are.</p>
+      {status === "loading" && <p className="welcome-status" role="status">Loading…</p>}
+      {status === "none" && (
+        <div className="panel panel-lavender">
+          <p>No profile on this phone yet. It&apos;s created automatically the first time you order at a kiosk.</p>
+        </div>
+      )}
+      {status === "ready" && profile && (
+        <>
+          <section className="profile-section"><ProfileEditor /></section>
+          <section className="profile-section"><OrderHistory /></section>
+          <section className="profile-section"><ForgetButton onDone={() => setStatus("none")} /></section>
+        </>
+      )}
+    </div>
+  );
+}
+
+function SettingsSheet({ onClose }: { onClose(): void }) {
+  const speechRate    = usePhone(s => s.speechRate);
+  const setSpeechRate = usePhone(s => s.setSpeechRate);
+  const firstFocusRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => { firstFocusRef.current?.focus(); }, []);
   return (
     <div
       className="sheet-backdrop"
@@ -1008,19 +1091,8 @@ function SettingsSheet({ onClose }: { onClose(): void }) {
             </div>
           </div>
           <ProfileEditor />
-          <div className="settings-row">
-            <p className="settings-label" id="forget-label">Saved data</p>
-            <button
-              className={forget === "confirm" ? "btn btn-primary" : "btn btn-outline"}
-              type="button"
-              aria-describedby="forget-label"
-              aria-live="polite"
-              disabled={forget === "deleting" || forget === "done"}
-              onClick={onForget}
-            >
-              {forgetLabel}
-            </button>
-          </div>
+          <OrderHistory />
+          <ForgetButton />
         </div>
       </div>
     </div>

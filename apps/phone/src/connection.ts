@@ -76,6 +76,8 @@ export interface PhoneProfile {
   lastOrder?: { spoken: string; total: number; at: string } | null;
   /** What they asked to be remembered: name, speaking speed, diet, allergies. */
   preferences?: { name?: string; speechRate?: number; diet?: string[]; allergies?: string[] };
+  /** Past orders, newest first. */
+  history?: { kind: string; place: string; at: string; total: number; spoken: string; lines: { name: string; qty: number }[] }[];
 }
 
 /** The saved profile as it is now (e.g. after the customer said "speak slower"). */

@@ -1200,3 +1200,165 @@ button {
 /* Camera scanner states */
 .scanner-viewfinder .scanner-placeholder { position: absolute; inset: 0; color: rgba(255, 255, 255, 0.9); line-height: 1.4; }
 .scanner-retry { width: auto; min-height: 48px; padding: 0 1.25rem; margin-top: 0.25rem; }
+
+/* =============================================================
+   AllScreen design refresh. Same palette, more depth and motion.
+   Layered on top of the styles above; animations respect
+   prefers-reduced-motion at the end of this block.
+   ============================================================= */
+
+:root {
+  --violet:       #7C6FD6;
+  --grad-brand:   linear-gradient(135deg, var(--indigo) 0%, var(--violet) 100%);
+  --grad-warm:    linear-gradient(135deg, #FFE3BF 0%, var(--peach) 100%);
+  --radius-card:  1.5rem;
+  --radius-pill:  999px;
+  --shadow-glow:  0 10px 30px rgba(72, 86, 150, 0.22);
+}
+
+/* Soft glowing backdrop instead of flat ivory */
+body, .page {
+  background:
+    radial-gradient(60% 40% at 100% 0%, rgba(249, 199, 132, 0.28) 0%, transparent 70%),
+    radial-gradient(55% 45% at 0% 100%, rgba(124, 111, 214, 0.16) 0%, transparent 70%),
+    var(--ivory);
+}
+.page { overflow-y: auto; }
+
+/* ---------- Brand ---------- */
+.app-logo-wrap { display: inline-flex; align-items: center; gap: 0.6rem; }
+.app-logo-wrap svg { filter: drop-shadow(0 4px 10px rgba(72, 86, 150, 0.3)); border-radius: 10px; }
+.app-logo-name { font-size: 1.25rem; font-weight: 800; letter-spacing: -0.02em; color: var(--text); }
+.app-logo-name span {
+  background: var(--grad-brand);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.welcome-top {
+  display: flex; align-items: center; justify-content: space-between; gap: 0.75rem;
+  padding: 1.25rem 1.5rem 0.5rem;
+}
+.place-chip {
+  display: inline-flex; align-items: center; gap: 0.45rem;
+  padding: 0.4rem 0.85rem; border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.75); border: 1px solid var(--border);
+  font-size: 0.875rem; font-weight: 600; color: var(--text-2); text-decoration: none;
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+}
+.place-dot { width: 8px; height: 8px; border-radius: 50%; background: #3BA55C; box-shadow: 0 0 0 3px rgba(59, 165, 92, 0.2); }
+.page-title { font-size: 1.875rem; font-weight: 800; letter-spacing: -0.03em; color: var(--text); padding: 0 1.5rem; }
+
+/* ---------- Buttons ---------- */
+.btn { border-radius: var(--radius-pill); transition: transform 0.12s, background 0.14s, box-shadow 0.14s, opacity 0.14s; }
+.btn:active:not(:disabled) { transform: scale(0.98); }
+.btn-primary { background: var(--grad-brand); box-shadow: var(--shadow-glow); }
+.btn-primary:hover:not(:disabled) { background: var(--grad-brand); filter: brightness(1.06); }
+.btn-outline { background: rgba(255, 255, 255, 0.8); border: 1.5px solid var(--border-med); color: var(--indigo); }
+.btn-danger { background: var(--error); color: var(--white); box-shadow: 0 8px 20px rgba(197, 48, 48, 0.25); }
+.btn-xl { min-height: 64px; font-size: 1.125rem; }
+
+/* ---------- Welcome ---------- */
+.welcome-page { min-height: 100%; }
+.welcome-hero {
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  text-align: center; gap: 0.75rem; padding: 1.5rem 1.75rem 0.5rem;
+}
+.welcome-heading { font-size: 2.125rem; line-height: 1.1; font-weight: 800; letter-spacing: -0.035em; color: var(--text); }
+.welcome-sub { font-size: 1.0625rem; color: var(--text-2); max-width: 22rem; padding: 0 1.5rem; margin: 0 auto; }
+.welcome-hero .welcome-sub { padding: 0; }
+.welcome-status {
+  margin-top: 0.25rem; padding: 0.45rem 1rem; border-radius: var(--radius-pill);
+  background: var(--indigo-tint); color: var(--indigo); font-weight: 600; font-size: 0.95rem;
+}
+.welcome-actions { display: grid; gap: 0.75rem; padding: 1rem 1.5rem max(1.5rem, env(safe-area-inset-bottom)); }
+.welcome-profile { justify-self: center; font-weight: 600; }
+
+/* The voice orb: three soft rings around the mic, alive while speaking or listening */
+.voice-orb {
+  position: relative; width: 152px; height: 152px; margin-bottom: 0.75rem;
+  display: grid; place-items: center; border-radius: 50%;
+  background: var(--grad-brand); color: var(--white);
+  box-shadow: var(--shadow-glow), inset 0 -8px 20px rgba(0, 0, 0, 0.12);
+}
+.voice-orb > span {
+  position: absolute; inset: -14px; border-radius: 50%;
+  border: 2px solid rgba(124, 111, 214, 0.28);
+}
+.voice-orb > span:nth-child(2) { inset: -30px; border-color: rgba(124, 111, 214, 0.18); }
+.voice-orb > span:nth-child(3) { inset: -48px; border-color: rgba(249, 199, 132, 0.35); }
+.voice-orb svg { position: relative; z-index: 1; }
+.voice-orb-asking > span, .voice-orb-listening > span { animation: orb-ripple 1.8s ease-out infinite; }
+.voice-orb-asking > span:nth-child(2), .voice-orb-listening > span:nth-child(2) { animation-delay: 0.3s; }
+.voice-orb-asking > span:nth-child(3), .voice-orb-listening > span:nth-child(3) { animation-delay: 0.6s; }
+.voice-orb-listening { background: linear-gradient(135deg, #E9A23B 0%, var(--peach) 100%); color: var(--text); }
+@keyframes orb-ripple {
+  0%   { transform: scale(0.9); opacity: 0.9; }
+  100% { transform: scale(1.15); opacity: 0; }
+}
+
+/* ---------- Profile card, profile page, order history ---------- */
+.profile-card {
+  margin: 0 1.5rem; border-radius: var(--radius-card); padding: 1rem 1.25rem;
+  background: rgba(255, 255, 255, 0.82); border: 1px solid var(--border); box-shadow: var(--shadow-md);
+}
+.profile-page { gap: 1rem; padding-bottom: 2rem; }
+.profile-section {
+  margin: 0 1.25rem; padding: 1.25rem; border-radius: var(--radius-card);
+  background: rgba(255, 255, 255, 0.86); border: 1px solid var(--border); box-shadow: var(--shadow-md);
+}
+.profile-section .profile-editor { border-bottom: none; padding: 0; }
+.history-list { list-style: none; display: grid; gap: 0.75rem; margin-top: 0.75rem; }
+.history-item {
+  padding: 0.9rem 1rem; border-radius: 1rem; background: var(--lavender);
+  border-left: 4px solid var(--violet);
+}
+.history-head { display: flex; justify-content: space-between; align-items: baseline; gap: 0.5rem; }
+.history-place { font-weight: 700; color: var(--text); }
+.history-total { font-weight: 800; color: var(--indigo); }
+.history-items { color: var(--text-2); font-size: 0.95rem; margin-top: 0.15rem; }
+.history-date { color: var(--text-3); font-size: 0.85rem; margin-top: 0.15rem; }
+.profile-link {
+  display: block; text-align: center; margin: 1rem auto 0; font-weight: 600;
+  color: var(--indigo); text-decoration: underline; text-underline-offset: 3px;
+}
+
+/* ---------- Scanner ---------- */
+.scanner-viewfinder { border-radius: var(--radius-card); box-shadow: var(--shadow-glow); overflow: hidden; }
+.code-entry {
+  border-radius: var(--radius-card); background: rgba(255, 255, 255, 0.86);
+  border: 1px solid var(--border); box-shadow: var(--shadow-md);
+}
+
+/* ---------- Chat ---------- */
+.conv-header {
+  background: rgba(255, 255, 255, 0.78); border-bottom: 1px solid rgba(221, 216, 245, 0.8);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+}
+.conv-brand { font-weight: 800; letter-spacing: -0.01em; }
+.message-list { background: transparent; }
+.bubble { border-radius: 1.35rem; }
+.bubble-user { background: var(--grad-brand); box-shadow: 0 6px 16px rgba(72, 86, 150, 0.25); }
+.bubble-agent { background: rgba(255, 255, 255, 0.92); border-color: rgba(221, 216, 245, 0.9); box-shadow: var(--shadow-md); }
+.cart-bar { border-radius: var(--radius-pill); margin: 0.5rem 1rem 0; box-shadow: var(--shadow-sm); }
+.bottom-panel {
+  background: rgba(255, 255, 255, 0.85); border-top: none;
+  border-radius: 1.75rem 1.75rem 0 0; box-shadow: 0 -10px 30px rgba(72, 86, 150, 0.1);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+}
+.voice-status-bar { background: var(--grad-warm); border: none; box-shadow: var(--shadow-sm); min-height: 3rem; }
+.voice-status-text { color: var(--text); }
+.tap-to-talk {
+  display: inline-flex; align-items: center; gap: 0.5rem; min-height: 44px;
+  padding: 0.5rem 1.25rem; border: none; border-radius: var(--radius-pill);
+  background: var(--grad-brand); color: var(--white); font-size: 1rem; font-weight: 700;
+  box-shadow: var(--shadow-glow); cursor: pointer;
+}
+.tap-to-talk:focus-visible { outline: 3px solid var(--indigo); outline-offset: 3px; }
+.sheet { border-radius: 1.75rem 1.75rem 0 0; }
+
+/* ---------- Motion off for people who prefer it ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .voice-orb > span { animation: none !important; }
+  .btn, .bubble, .sheet { transition: none; animation: none; }
+}
