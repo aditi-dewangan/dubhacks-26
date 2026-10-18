@@ -75,6 +75,8 @@ export function App() {
   const [settingsOpen,  setSettingsOpen]  = useState(false);
   const [cartReviewOpen, setCartReviewOpen] = useState(false);
   const [permissionHelp, setPermissionHelp] = useState<Device | null>(null);
+  // Mic not allowed yet: wait for the Start tap so the browser's prompt comes with a reason.
+  const [micNeedsTap, setMicNeedsTap] = useState(false);
   const askToStartRef = useRef<(auto?: boolean) => void>(() => {});
 
   // Keep speech rate accessible to agentVoice without re-creating it on every render
@@ -135,8 +137,16 @@ export function App() {
         socket.on("connect", () => {
           if (cancelled) return;
           store.setPhase("active");
-          // Voice ordering turns itself on: greet, then listen. The browser asks for the mic if needed.
-          if (!usePhone.getState().orderingStarted && speechSupport().recognition) askToStartRef.current(true);
+          // Voice ordering turns itself on (greet, then listen) when the mic is already allowed.
+          // Otherwise wait for a tap: a surprise mic prompt on page load looks broken, and iPhones
+          // keep the greeting silent until a tap anyway. Chrome on iPhone asks again on every visit.
+          if (!usePhone.getState().orderingStarted && speechSupport().recognition) {
+            void queryPermission("microphone").then((mic) => {
+              if (cancelled || usePhone.getState().orderingStarted) return;
+              if (mic === "prompt" || (mic !== "granted" && iosNonSafari())) { setMicNeedsTap(true); return; }
+              askToStartRef.current(true);
+            });
+          }
         });
         socket.on("connect_error", e => {
           if (!cancelled) store.setError("connect_failed", e.message);
@@ -226,6 +236,7 @@ export function App() {
   const askToStart = useCallback(async (auto = false) => {
     const voice = voiceRef.current;
     if (!voice) { enterChat(false); return; }
+    setMicNeedsTap(false);
     unlockAudio();
     // Ask for the mic now. Already blocked: show how to turn it on instead of listening.
     const mic = await queryPermission("microphone");
@@ -290,6 +301,7 @@ export function App() {
       <StartScreen
         place={placeName(kioskState)}
         status={voiceListening ? "listening" : agentSpeaking ? "asking" : welcome}
+        micNeedsTap={micNeedsTap}
         onStartVoice={() => { void askToStart(); }}
         onStartText={() => enterChat(false)}
         onProfile={() => setSettingsOpen(true)}
@@ -527,9 +539,12 @@ const WELCOME_STATUS: Record<WelcomeStatus, string> = {
   unheard: "I didn't catch that. Tap Start ordering to try again.",
 };
 
-function StartScreen({ place, status, onStartVoice, onStartText, onProfile }: {
+const MIC_NOTE = "Tap Start ordering. Your phone will ask to use the microphone: tap Allow.";
+
+function StartScreen({ place, status, micNeedsTap, onStartVoice, onStartText, onProfile }: {
   place: string;
   status: WelcomeStatus;
+  micNeedsTap: boolean;
   onStartVoice(): void;
   onStartText(): void;
   onProfile(): void;
@@ -554,7 +569,7 @@ function StartScreen({ place, status, onStartVoice, onStartText, onProfile }: {
         </div>
         <h1 className="welcome-heading">Hi! Ready to order?</h1>
         <p className="welcome-sub">Just talk. I&apos;ll tap through the kiosk for you and read everything back before you pay.</p>
-        <p className="welcome-status" aria-live="polite">{hasSpeech ? WELCOME_STATUS[status] : "Type your order below."}</p>
+        <p className="welcome-status" aria-live="polite">{!hasSpeech ? "Type your order below." : micNeedsTap && status === "idle" ? MIC_NOTE : WELCOME_STATUS[status]}</p>
       </div>
 
       <ProfileCard />
