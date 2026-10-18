@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { normalizeCode } from "@kiosk-access/shared";
 import type { Cart, CartLine, KioskState, SessionEndReason } from "@kiosk-access/shared";
-import { attachProfile, connectSocket, createSession, parseParams } from "./connection.ts";
+import { attachProfile, connectSocket, createSession, deleteProfile, fetchProfile, parseParams, updateProfile, type PhoneProfile } from "./connection.ts";
 import type { PhoneSocket } from "./connection.ts";
 import type { ChatMessage } from "./store.ts";
 import { usePhone } from "./store.ts";
@@ -12,6 +12,14 @@ import { speechSupport } from "./speech.ts";
 
 let _id = 0;
 const uid = () => String(++_id);
+
+/** Keeps this phone's saved profile, and uses its speaking speed for spoken replies. */
+function applyProfile(p: PhoneProfile) {
+  const store = usePhone.getState();
+  store.setProfile(p);
+  const rate = p.preferences?.speechRate;
+  if (rate && rate !== store.speechRate) store.setSpeechRate(rate);
+}
 
 // ---- End / error display data ----
 
@@ -82,7 +90,7 @@ export function App() {
         socket = connectSocket(sess.sessionId, sess.sessionSecret);
         socketRef.current = socket;
         // Recognise a returning customer (no login screen). Ordering doesn't wait for it.
-        void attachProfile(sess.sessionId, sess.sessionSecret).then(p => { if (p && !cancelled) store.setProfile(p); });
+        void attachProfile(sess.sessionId, sess.sessionSecret).then(p => { if (p && !cancelled) applyProfile(p); });
 
         // Voice controller: sendText callback emits to server and updates store.
         // showTranscript is a no-op — sendText adds the bubble; we avoid duplicates.
@@ -115,6 +123,8 @@ export function App() {
           if (!cancelled) store.setError("connect_failed", e.message);
         });
         socket.on("kiosk:state", state => store.setKioskState(state));
+        // The customer may have just asked to be remembered ("speak slower"): pick up the change.
+        socket.on("agent:message", () => { void fetchProfile().then(p => { if (p && !cancelled) applyProfile(p); }); });
         socket.on("agent:message", msg => {
           setAgentThinking(false);
           store.setAwaitingConfirmation(msg.awaitingConfirmation);
@@ -434,6 +444,8 @@ function StartScreen({ kioskId, onStartVoice, onStartText }: {
       </p>
       <div className="start-inner">
         <AppLogo />
+
+        <ProfileCard />
 
         <div className="panel panel-sage" role="status" style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
           <CheckmarkIcon size={15} color="var(--sage-text)" />
@@ -831,11 +843,98 @@ const SPEECH_RATES = [
   { label: "Fast",   value: 1.5  },
 ];
 
+/** What this phone's profile remembers, shown on the start screen. */
+function ProfileCard() {
+  const profile = usePhone(s => s.profile);
+  if (!profile) return null;
+  const p = profile.preferences ?? {};
+  const facts = [
+    p.diet?.length ? p.diet.join(" and ") : "",
+    p.allergies?.length ? `allergic to ${p.allergies.join(", ")}` : "",
+  ].filter(Boolean);
+  if (!profile.returning && !p.name && !facts.length) return null;
+  return (
+    <section className="panel panel-lavender profile-card" aria-label="Your profile">
+      <p className="profile-card-title">{p.name ? `Welcome back, ${p.name}` : "Welcome back"}</p>
+      {profile.lastOrder?.spoken && <p>Last time here: {profile.lastOrder.spoken}</p>}
+      {facts.length > 0 && <p>Remembered: {facts.join(" · ")}</p>}
+      <p className="profile-card-hint">Change these in Settings, or just tell the assistant.</p>
+    </section>
+  );
+}
+
+/** Edit what's remembered: name, diet, allergies and speaking speed. Saved on the server. */
+function ProfileEditor() {
+  const profile = usePhone(s => s.profile);
+  const setProfile = usePhone(s => s.setProfile);
+  const speechRate = usePhone(s => s.speechRate);
+  const p = profile?.preferences ?? {};
+  const [name, setName] = useState(p.name ?? "");
+  const [diet, setDiet] = useState<string[]>(p.diet ?? []);
+  const [allergies, setAllergies] = useState((p.allergies ?? []).join(", "));
+  const [status, setStatus] = useState("");
+
+  if (!profile) return <p className="settings-label">Your profile appears after you start an order.</p>;
+
+  const toggleDiet = (d: string) => setDiet(cur => cur.includes(d) ? cur.filter(x => x !== d) : [...cur, d]);
+  const save = async () => {
+    setStatus("Saving…");
+    const result = await updateProfile({
+      ...(name.trim() ? { name: name.trim() } : {}),
+      diet,
+      allergies: allergies.split(",").map(a => a.trim()).filter(Boolean),
+      speechRate,
+    });
+    if ("error" in result) { setStatus(result.error); return; }
+    setProfile(result);
+    setStatus("Saved.");
+  };
+
+  return (
+    <div className="profile-editor" role="group" aria-labelledby="profile-heading">
+      <p className="settings-label" id="profile-heading">Your profile</p>
+      <label className="profile-field">
+        <span>Name</span>
+        <input className="text-field" value={name} onChange={e => setName(e.target.value)} maxLength={40} autoComplete="given-name" />
+      </label>
+      <div className="segmented" role="group" aria-label="Diet">
+        {["vegetarian", "vegan"].map(d => (
+          <button key={d} className="segmented-btn" type="button" aria-pressed={diet.includes(d)} onClick={() => toggleDiet(d)}>
+            {d[0].toUpperCase() + d.slice(1)}
+          </button>
+        ))}
+      </div>
+      <label className="profile-field">
+        <span>Allergies (separate with commas)</span>
+        <input className="text-field" value={allergies} onChange={e => setAllergies(e.target.value)} placeholder="e.g. peanuts, shellfish" />
+      </label>
+      <p className="profile-card-hint">The menu has no allergen details, so the assistant will flag these but can&apos;t promise an item is safe.</p>
+      <button className="btn btn-primary" type="button" onClick={save}>Save profile</button>
+      <p className="profile-status" role="status" aria-live="polite">{status}</p>
+    </div>
+  );
+}
+
 function SettingsSheet({ onClose }: { onClose(): void }) {
   const speechRate    = usePhone(s => s.speechRate);
   const setSpeechRate = usePhone(s => s.setSpeechRate);
   const firstFocusRef = useRef<HTMLButtonElement>(null);
   useEffect(() => { firstFocusRef.current?.focus(); }, []);
+  // "Forget me": the first tap asks, the second deletes.
+  const [forget, setForget] = useState<"idle" | "confirm" | "deleting" | "done" | "failed">("idle");
+  const onForget = async () => {
+    if (forget === "idle" || forget === "failed") { setForget("confirm"); return; }
+    if (forget !== "confirm") return;
+    setForget("deleting");
+    setForget((await deleteProfile()) ? "done" : "failed");
+  };
+  const forgetLabel = {
+    idle: "Delete my saved data",
+    confirm: "Tap again to delete your name, preferences and past orders",
+    deleting: "Deleting…",
+    done: "Deleted. This phone will start fresh next time.",
+    failed: "Couldn't delete right now. Tap to try again.",
+  }[forget];
 
   return (
     <div
@@ -870,6 +969,20 @@ function SettingsSheet({ onClose }: { onClose(): void }) {
                 </button>
               ))}
             </div>
+          </div>
+          <ProfileEditor />
+          <div className="settings-row">
+            <p className="settings-label" id="forget-label">Saved data</p>
+            <button
+              className={forget === "confirm" ? "btn btn-primary" : "btn btn-outline"}
+              type="button"
+              aria-describedby="forget-label"
+              aria-live="polite"
+              disabled={forget === "deleting" || forget === "done"}
+              onClick={onForget}
+            >
+              {forgetLabel}
+            </button>
           </div>
         </div>
       </div>

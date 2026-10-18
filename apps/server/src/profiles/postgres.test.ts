@@ -66,4 +66,18 @@ describe("profiles in Postgres", () => {
     await store.flush(); // the failed write is logged, not thrown
     expect(store.verify(token)).not.toBeNull();
   });
+
+  it("keeps preferences and deletes a forgotten profile's row", async () => {
+    const db = database();
+    const store = createProfileStore({ persistence: postgresPersistence(db) });
+    await store.load();
+    const { profile, token } = store.create();
+    store.setPreferences(profile, { name: "Sam", allergies: ["peanuts"] });
+    await store.flush();
+    const reloaded = createProfileStore({ persistence: postgresPersistence(db) });
+    await reloaded.load();
+    expect(reloaded.verify(token)?.preferences).toEqual({ name: "Sam", allergies: ["peanuts"] });
+    await reloaded.remove(reloaded.verify(token)!);
+    expect((await db.query("SELECT * FROM profiles")).rows).toEqual([]);
+  });
 });

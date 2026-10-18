@@ -286,7 +286,7 @@ test("real SDK carries tool declarations and signed tool exchanges across model 
   const client = new GoogleGenAI({ apiKey: "offline-test", vertexai: false, httpOptions: {
     fetch: async (_url, init) => {
       const body = JSON.parse(String(init?.body));
-      assert.equal(body.tools[0].functionDeclarations.length, 10);
+      assert.equal(body.tools[0].functionDeclarations.length, 13);
       assert.ok(!JSON.stringify(body.tools).includes('"name":"start_payment"'));
       if (round++ > 0) {
         assert.deepEqual(body.contents[1], signed);

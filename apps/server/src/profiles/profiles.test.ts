@@ -131,4 +131,27 @@ describe("remember this phone", () => {
     expect(store.lastOrder(profile, "store42-kiosk1")?.total).toBe(4);
     expect(store.saveOrder("no-profile", { kioskId: "store42-kiosk1", lines: [], total: 0 })).toBeNull();
   });
+
+  it("saves preferences, cleans them, and refuses bad values", async () => {
+    const p = await newProfile();
+    const patch = (body: unknown) => call("/api/profiles/me", { token: p.profileToken, body, method: "PATCH" });
+    const saved = await (await patch({ name: "  Sam <script>", diet: ["Vegetarian"], allergies: ["Peanuts", "peanuts"], speechRate: 0.8 })).json();
+    expect(saved.preferences).toEqual({ name: "Sam script", diet: ["vegetarian"], allergies: ["peanuts"], speechRate: 0.8 });
+    expect((await patch({ speechRate: 5 })).status).toBe(400);
+    expect((await patch({ diet: ["keto"] })).status).toBe(400);
+    expect((await call("/api/profiles/me", { token: "bad.token", body: { name: "x" }, method: "PATCH" })).status).toBe(401);
+    // Only the fields sent change.
+    expect((await (await patch({ name: "Sam" })).json()).preferences).toMatchObject({ name: "Sam", diet: ["vegetarian"] });
+  });
+
+  it("forget me deletes the profile, its history and its saved file entry", async () => {
+    const p = await newProfile();
+    await call("/api/profiles/attach", { token: p.profileToken, body: { sessionId: "s1", sessionSecret: "secret-1" } });
+    store.saveOrder("s1", { kioskId: "store42-kiosk1", lines: [{ itemId: "cookie", name: "Cookie", qty: 1, options: {} }], total: 1.42 });
+    expect((await call("/api/profiles/me", { token: p.profileToken, method: "DELETE" })).status).toBe(204);
+    expect((await call("/api/profiles/me", { token: p.profileToken })).status).toBe(401);
+    expect(store.forSession("s1")).toBeNull();
+    await store.flush();
+    expect(readFileSync(file, "utf8")).not.toContain(p.profileId);
+  });
 });

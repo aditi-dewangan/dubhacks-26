@@ -33,6 +33,17 @@ export const agentTools = [
     parametersJsonSchema: object({ buttonId: id }, ["buttonId"]) },
   { name: "type_text", description: "On a clinic, cinema or transit kiosk, type the customer's answer into an on-screen text field by its ID or label. Only type what the customer said; never invent personal details.",
     parametersJsonSchema: object({ fieldId: id, text: { type: "string", minLength: 1, maxLength: 80 } }, ["fieldId", "text"]) },
+  { name: "get_profile", description: "Read what's saved about this customer (name, diet, allergies, speaking speed, last order here). Use when they ask what you know about them.",
+    parametersJsonSchema: object() },
+  { name: "update_profile", description: "Save something the customer asked you to remember about them. Only include fields they actually told you.",
+    parametersJsonSchema: object({
+      name: { type: "string", minLength: 1, maxLength: 40 },
+      speechRate: { type: "number", minimum: 0.5, maximum: 2, description: "1 is normal; 0.8 slower; 1.25 faster." },
+      diet: { type: "array", items: { type: "string", enum: ["vegetarian", "vegan"] } },
+      allergies: { type: "array", items: { type: "string", minLength: 1, maxLength: 30 }, description: "In the customer's words. An empty list clears them." },
+    }) },
+  { name: "forget_me", description: "Delete everything saved about this customer, including past orders. Only after they clearly confirm; set confirmed to true then.",
+    parametersJsonSchema: object({ confirmed: { type: "boolean" } }, ["confirmed"]) },
 ] as const;
 
 export type AgentToolName = (typeof agentTools)[number]["name"];

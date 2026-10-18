@@ -3,7 +3,7 @@
 
 import { timingSafeEqual } from "node:crypto";
 import { Router, type Request } from "express";
-import type { Profile, ProfileStore, SavedOrder } from "./store.ts";
+import { cleanPreferences, type Profile, type ProfileStore, type SavedOrder } from "./store.ts";
 
 export interface ProfileRouteDeps {
   store: ProfileStore;
@@ -15,7 +15,10 @@ export interface ProfileRouteDeps {
 const bearer = (req: Request) => req.get("authorization")?.match(/^Bearer (.+)$/)?.[1];
 
 /** What the phone may see about its own profile. Never the hash. */
-const view = (p: Profile) => ({ profileId: p.profileId, createdAt: p.createdAt, visits: p.visits, returning: p.visits > 1 });
+const view = (p: Profile) => ({
+  profileId: p.profileId, createdAt: p.createdAt, visits: p.visits, returning: p.visits > 1,
+  preferences: p.preferences ?? {}, savedOrders: p.orders?.length ?? 0,
+});
 
 function sameSecret(a: string, b: unknown) {
   if (typeof b !== "string") return false;
@@ -41,6 +44,32 @@ export function createProfileRoutes({ store, getSession, describeOrder }: Profil
       return;
     }
     res.json(view(profile));
+  });
+
+  // Save the customer's preferences (name, speaking speed, diet, allergies).
+  routes.patch("/api/profiles/me", (req, res) => {
+    const profile = store.verify(bearer(req));
+    if (!profile) {
+      res.status(401).json({ error: "unknown_profile", message: "This phone's profile isn't recognised." });
+      return;
+    }
+    const prefs = cleanPreferences(req.body);
+    if (!prefs.ok) {
+      res.status(400).json({ error: "bad_request", message: prefs.error });
+      return;
+    }
+    res.json(view(store.setPreferences(profile, prefs.value)));
+  });
+
+  // "Forget me": delete the profile and all its history.
+  routes.delete("/api/profiles/me", async (req, res) => {
+    const profile = store.verify(bearer(req));
+    if (!profile) {
+      res.status(401).json({ error: "unknown_profile", message: "This phone's profile isn't recognised." });
+      return;
+    }
+    await store.remove(profile);
+    res.status(204).end();
   });
 
   // Link the profile to the ordering session the phone just started. Needs both secrets.

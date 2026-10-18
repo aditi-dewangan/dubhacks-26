@@ -8,10 +8,12 @@ const PLACES = { food: "Harbor Burger", clinic: "Evergreen Family Clinic", cinem
 /** What the assistant says first, right after the customer taps to start. Short: the sections, then one question. */
 export function greeting(state: KioskState | null, profile?: PhoneProfile | null): string {
   const kind = state?.kind ?? "food";
+  const name = profile?.preferences?.name;
   // A returning customer at the same restaurant: offer their last order.
   if (profile?.lastOrder?.spoken && kind !== "clinic") {
-    return `Welcome back to ${PLACES[kind]}! Last time you had ${profile.lastOrder.spoken}. Would you like the same as last time?`;
+    return `Welcome back${name ? `, ${name}` : ""}, to ${PLACES[kind]}! Last time you had ${profile.lastOrder.spoken}. Would you like the same as last time?`;
   }
+  if (name) return `Hi ${name}! ${greeting(state)}`;
   switch (kind) {
     case "clinic":
       return "Welcome to Evergreen Family Clinic. I can help you check in for your appointment. Shall we start?";

@@ -84,8 +84,8 @@ test("payment, generic press, confirm and unknown tools never reach the bridge",
     }, "a", name, { buttonId: "btn-pay" });
     assert.match(result, /Unknown agent tool/);
   }
-  assert.equal(agentTools.length, 10);
-  assert.equal(new Set(agentTools.map((t) => t.name)).size, 10);
+  assert.equal(agentTools.length, 13);
+  assert.equal(new Set(agentTools.map((t) => t.name)).size, 13);
 });
 
 test("bridge exceptions remain observable to the future tool loop", async () => {
