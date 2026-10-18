@@ -7,8 +7,11 @@ import { getEvents } from "./realtime/log.ts";
 import { currentCode } from "./realtime/pairing.ts";
 import { createSession, createSessionByCode } from "./realtime/sessions.ts";
 import { kiosks } from "./realtime/store.ts";
+import { profileRoutes } from "./profiles/index.ts";
 
 export const routes = Router();
+
+routes.use(profileRoutes);
 
 routes.get("/", (_req, res) => {
   res.json({ ok: true, service: "kiosk-access-server" });

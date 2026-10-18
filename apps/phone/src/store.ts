@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { KioskState, SessionEndReason } from "@kiosk-access/shared";
+import type { PhoneProfile } from "./connection.ts";
 
 export type AppPhase = "init" | "bad_url" | "connecting" | "error" | "active" | "ended";
 
@@ -20,6 +21,8 @@ interface PhoneStore {
   awaitingConfirmation: boolean;
   orderingStarted: boolean;
   speechRate: number;
+  /** This phone's saved profile, once the server recognises it. */
+  profile: PhoneProfile | null;
 
   setPhase(phase: AppPhase): void;
   setError(code: string, message: string): void;
@@ -29,6 +32,7 @@ interface PhoneStore {
   setAwaitingConfirmation(v: boolean): void;
   setOrderingStarted(v: boolean): void;
   setSpeechRate(rate: number): void;
+  setProfile(profile: PhoneProfile): void;
 }
 
 export const usePhone = create<PhoneStore>((set) => ({
@@ -41,6 +45,7 @@ export const usePhone = create<PhoneStore>((set) => ({
   awaitingConfirmation: false,
   orderingStarted: false,
   speechRate: 1.0,
+  profile: null,
 
   setPhase: (phase) => set({ phase }),
   setError: (errorCode, errorMessage) => set({ phase: "error", errorCode, errorMessage }),
@@ -50,4 +55,5 @@ export const usePhone = create<PhoneStore>((set) => ({
   setAwaitingConfirmation: (awaitingConfirmation) => set({ awaitingConfirmation }),
   setOrderingStarted: (orderingStarted) => set({ orderingStarted }),
   setSpeechRate: (speechRate) => set({ speechRate }),
+  setProfile: (profile) => set({ profile }),
 }));

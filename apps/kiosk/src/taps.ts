@@ -7,8 +7,28 @@ import { moveFingerTo, pressFinger, PRESS_MS, TRAVEL_MS } from "./finger.tsx";
 /** An error the assistant can read aloud. Anything else is a bug. */
 export class KioskError extends Error {}
 
-export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-export const nextPaint = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+// When the kiosk window is hidden or covered, Chrome pauses animation frames and slows timers
+// to about once a minute, which froze every tap sequence. Nobody can see the finger then, so
+// skip the animation pauses and only let the page update, with a message-channel tick that
+// Chrome doesn't throttle. When the window is visible, everything animates as before.
+const hidden = () => document.visibilityState === "hidden";
+const tick = () => new Promise<void>((r) => {
+  const channel = new MessageChannel();
+  channel.port1.onmessage = () => r();
+  channel.port2.postMessage(0);
+});
+
+export const sleep = (ms: number) => (hidden() ? tick() : new Promise<void>((r) => setTimeout(r, ms)));
+
+/** Runs fn after the next paint, or right away (after one tick) if the browser isn't painting. */
+export const afterPaint = (fn: () => void) => {
+  let done = false;
+  const run = () => { if (!done) { done = true; fn(); } };
+  if (hidden()) { void tick().then(run); return; }
+  requestAnimationFrame(() => requestAnimationFrame(run));
+  setTimeout(run, 60);
+};
+export const nextPaint = () => new Promise<void>((r) => afterPaint(r));
 
 export function findTarget(id: string): HTMLElement | null {
   return document.querySelector<HTMLElement>(`[data-kiosk-id="${CSS.escape(id)}"]`);

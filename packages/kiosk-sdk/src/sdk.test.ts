@@ -185,6 +185,39 @@ describe("AccessKiosk", () => {
     await vi.waitFor(() => expect(states.map((s) => s.title)).toEqual(["cart", "cart"]));
   });
 
+  it("refuses a command that waited too long instead of running it late", async () => {
+    kiosk = AccessKiosk.connect({ serverUrl: url, kioskId: "k1", kioskKey: "key", commandTtlMs: 100 });
+    const k = kiosk;
+    const ran: string[] = [];
+    k.onCommand(async (cmd) => {
+      ran.push(cmd.type);
+      await new Promise((r) => setTimeout(r, 250)); // e.g. a long tap sequence, or a frozen window
+      return { ok: true, state: state("cart") };
+    });
+    await waitForStatus(k, "online");
+    sockets[0].emit("kiosk:command", { cmdId: "c1", sessionId: "s", command: { type: "remove_item", lineId: "L1" } });
+    sockets[0].emit("kiosk:command", { cmdId: "c2", sessionId: "s", command: { type: "cancel_order" } });
+    await vi.waitFor(() => expect(acks.length).toBe(2));
+    expect(ran).toEqual(["remove_item"]);
+    expect(acks[1]).toMatchObject({ cmdId: "c2", ok: false });
+    expect(acks[1].error).toMatch(/waited too long/);
+  });
+
+  it("refuses leftover commands from a session that has ended", async () => {
+    const k = connect();
+    const handler = vi.fn(async () => ({ ok: true, state: state("cart") }));
+    k.onCommand(handler);
+    await waitForStatus(k, "online");
+    sockets[0].emit("session:ended", { sessionId: "s-old", active: false, reason: "user_ended" });
+    sockets[0].emit("kiosk:command", { cmdId: "c1", sessionId: "s-old", command: { type: "cancel_order" } });
+    sockets[0].emit("kiosk:command", { cmdId: "c2", sessionId: "dev", command: { type: "cancel_order" } });
+    await vi.waitFor(() => expect(acks.length).toBe(2));
+    expect(acks[0]).toMatchObject({ cmdId: "c1", ok: false });
+    expect(acks[0].error).toMatch(/session has ended/);
+    expect(acks[1]).toMatchObject({ cmdId: "c2", ok: true }); // dev-route commands without a session still work
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+
   it("forwards session events and ends the session on request", async () => {
     const k = connect();
     const seen: boolean[] = [];

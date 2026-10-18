@@ -56,7 +56,7 @@ test("starting recognition cancels speech; replacing speech settles both promise
 test("phone adapter sends transcripts once and prevents sends after disposal", async () => {
   const h = fixture();
   const sent: string[] = [];
-  const voice = createAgentVoice({ sendText: (text) => { sent.push(text); }, showTranscript: () => {}, showStatus: () => {} }, h.controller);
+  const voice = createAgentVoice({ sendText: (text) => { sent.push(text); }, showTranscript: () => {}, showStatus: () => {} }, () => 1, h.controller);
   const listening = voice.listenAndSend();
   h.instances[0].result("One water");
   await listening;
@@ -73,7 +73,7 @@ test("completion announces the actual number once and survives completed-session
   const h = fixture();
   const statuses: string[] = [];
   const voice = createAgentVoice({ sendText: () => assert.fail("completed orders cannot send"),
-    showTranscript: () => {}, showStatus: (text) => { statuses.push(text); } }, h.controller);
+    showTranscript: () => {}, showStatus: (text) => { statuses.push(text); } }, () => 1, h.controller);
   voice.setEnabled(true);
   await voice.receiveKioskState({ screen: "paying", orderNumber: "142" });
   assert.equal(h.spoken.length, 0);
@@ -97,7 +97,7 @@ test("completion can arrive after order_complete but not after another end reaso
     const h = fixture();
     const statuses: string[] = [];
     const voice = createAgentVoice({ sendText: () => {}, showTranscript: () => {},
-      showStatus: (text) => { statuses.push(text); } }, h.controller);
+      showStatus: (text) => { statuses.push(text); } }, () => 1, h.controller);
     voice.endSession(reason);
     await voice.receiveKioskState({ screen: "complete", orderNumber: "142" });
     assert.equal(statuses.length, reason === "order_complete" ? 1 : 0);
@@ -110,7 +110,7 @@ test("socket binding removes its listeners and cancels speech on cleanup", async
   const { bindVoiceSocket } = await import("../../../phone/src/voiceSocket.ts");
   const socket = new EventEmitter();
   const h = fixture();
-  const voice = createAgentVoice({ sendText: () => {}, showTranscript: () => {}, showStatus: () => {} }, h.controller);
+  const voice = createAgentVoice({ sendText: () => {}, showTranscript: () => {}, showStatus: () => {} }, () => 1, h.controller);
   const cleanup = bindVoiceSocket(socket, voice);
   assert.equal(socket.listenerCount("kiosk:state"), 1);
   cleanup(); cleanup();

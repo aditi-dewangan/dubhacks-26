@@ -12,7 +12,8 @@
     "test:agent": "node --import tsx --test src/agent/*.test.ts",
     "agent:check": "node --env-file-if-exists=../../.env --import tsx scripts/agent-check.ts",
     "agent:eval": "node --env-file-if-exists=../../.env --import tsx scripts/agent-eval.ts",
-    "test:bridge": "vitest run src/bridge"
+    "test:bridge": "vitest run src/bridge",
+    "test:profiles": "vitest run src/profiles"
   },
   "dependencies": {
     "@google/genai": "^2.30.0",

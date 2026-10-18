@@ -21,6 +21,8 @@ export interface LoopDependencies {
   executeTool(sessionId: string, name: string, input: unknown): Promise<string>;
   reportFailure?(sessionId: string, code: GeminiFailure): void;
   reportToolCall?(sessionId: string, name: string): void;
+  /** What we remember about a returning customer, for the model's context. */
+  getMemory?(sessionId: string): string | null;
 }
 
 export const endedReply = (): AgentMessage => ({
@@ -51,6 +53,7 @@ export async function runToolLoop(deps: LoopDependencies, sessionId: string, tex
       const content = await deps.generateTurn({
         contents: structuredClone([...previous, ...turn]),
         state: deps.getKioskState(session.kioskId), toolsEnabled: true,
+        memory: deps.getMemory?.(sessionId) ?? undefined,
       });
       if (!active()) return endedReply();
       const calls = content.parts?.flatMap((part) => part.functionCall ? [part.functionCall] : []) ?? [];

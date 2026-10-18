@@ -46,3 +46,57 @@ export function connectSocket(sessionId: string, sessionSecret: string): PhoneSo
     auth: { role: "phone", sessionId, sessionSecret },
   });
 }
+
+// ---------- "Remember this phone" ----------
+// The profile token lives only in this browser. There's no login screen: the first visit
+// creates a profile silently, and later visits are recognised by the server.
+
+const PROFILE_KEY = "kiosk-access-profile";
+
+function readToken(): string | null {
+  try { return localStorage.getItem(PROFILE_KEY); } catch { return null; }
+}
+function saveToken(token: string) {
+  try { localStorage.setItem(PROFILE_KEY, token); } catch { /* private mode: no memory, still works */ }
+}
+
+async function newProfileToken(): Promise<string | null> {
+  const res = await fetch(`${SERVER_URL}/api/profiles`, { method: "POST" });
+  if (!res.ok) return null;
+  const { profileToken } = (await res.json()) as { profileToken: string };
+  saveToken(profileToken);
+  return profileToken;
+}
+
+export interface PhoneProfile {
+  profileId: string;
+  visits: number;
+  returning: boolean;
+  /** Their last completed order at this restaurant, if any. */
+  lastOrder?: { spoken: string; total: number; at: string } | null;
+}
+
+/**
+ * Links this phone's profile to the ordering session, creating the profile on the first
+ * visit (or again if the server forgot it). Never throws: ordering works without a profile.
+ */
+export async function attachProfile(sessionId: string, sessionSecret: string): Promise<PhoneProfile | null> {
+  try {
+    const attach = (token: string) => fetch(`${SERVER_URL}/api/profiles/attach`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+      body: JSON.stringify({ sessionId, sessionSecret }),
+    });
+    let token = readToken() ?? (await newProfileToken());
+    if (!token) return null;
+    let res = await attach(token);
+    if (res.status === 401) {
+      token = await newProfileToken();
+      if (!token) return null;
+      res = await attach(token);
+    }
+    return res.ok ? ((await res.json()) as PhoneProfile) : null;
+  } catch {
+    return null;
+  }
+}

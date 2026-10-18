@@ -24,6 +24,12 @@ export interface ConnectOptions {
   debounceMs?: number;
   /** How long to wait for the server to answer kiosk:register. Default 5000 ms. */
   registerTimeoutMs?: number;
+  /**
+   * A command that hasn't started within this long of arriving is refused instead of run
+   * (the server has given up on it by then, so running it late would surprise the customer).
+   * Default 15000 ms.
+   */
+  commandTtlMs?: number;
 }
 
 export type CommandResult = { ok: boolean; error?: string; state: KioskState };
@@ -49,6 +55,8 @@ export class AccessKiosk {
   private unsentAcks: CommandAck[] = [];
   /** cmdId -> ack (or the pending run) for recent commands. */
   private recentAcks = new Map<string, CommandAck | "running">();
+  /** Sessions that have ended; their leftover commands are refused, never run. */
+  private endedSessions = new Set<string>();
 
   private pairingListeners = new Set<Listener<string>>();
   private sessionListeners = new Set<Listener<SessionInfo>>();
@@ -73,7 +81,10 @@ export class AccessKiosk {
       this.pairingListeners.forEach((l) => l(url));
     });
     this.socket.on("session:started", (info) => this.setSession(info));
-    this.socket.on("session:ended", (info) => this.setSession(info));
+    this.socket.on("session:ended", (info) => {
+      if (info?.sessionId) this.endedSessions.add(info.sessionId);
+      this.setSession(info);
+    });
     this.socket.on("debug:ping", (p) => this.pingListeners.forEach((l) => l(p)));
     this.socket.on("kiosk:command", (env) => {
       if (!env || typeof env.cmdId !== "string") return;
@@ -82,10 +93,15 @@ export class AccessKiosk {
       if (seen) return this.sendAck(seen); // the server missed our ack; resend it
 
       this.remember(env.cmdId, "running");
+      const receivedAt = Date.now();
       // Run commands strictly one at a time, in arrival order.
       this.commandQueue = this.commandQueue.then(async () => {
         let result: CommandResult;
         try {
+          if (this.endedSessions.has(env.sessionId)) throw new Error("That ordering session has ended, so nothing was changed.");
+          if (Date.now() - receivedAt > (this.options.commandTtlMs ?? 15_000)) {
+            throw new Error("That request waited too long and was cancelled, so nothing was changed.");
+          }
           if (!this.commandHandler) throw new Error("This kiosk can't take commands yet.");
           result = await this.commandHandler(env.command);
         } catch (err) {
