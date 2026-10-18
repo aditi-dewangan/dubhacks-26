@@ -39,6 +39,7 @@ export async function runToolLoop(deps: LoopDependencies, sessionId: string, tex
   // After an exception, action outcome can be unknown. Do not replay mutations this turn.
   let actionOutcomeUnknown = false;
   let checkoutRequested = false;
+  let checkoutResult = "";
   const finish = (reply: string, modelAlreadyStored = false): AgentMessage => {
     if (!active()) return endedReply();
     const spokenReply = cleanSpokenReply(reply);
@@ -90,7 +91,7 @@ export async function runToolLoop(deps: LoopDependencies, sessionId: string, tex
               if (mutation) attemptedAction = true;
               return deps.executeTool(...args);
             }, sessionId, name, call.args ?? {});
-            if (name === "request_checkout" && session.pendingCheckout !== null) checkoutRequested = true;
+            if (name === "request_checkout" && session.pendingCheckout !== null) { checkoutRequested = true; checkoutResult = result; }
           } catch {
             if (mutation) actionOutcomeUnknown = true;
             result = "Tool failed unexpectedly. Its outcome may be unknown. Read current kiosk state before discussing the order; do not retry this action automatically.";
@@ -101,7 +102,10 @@ export async function runToolLoop(deps: LoopDependencies, sessionId: string, tex
       }
       turn.push({ role: "user", parts: results });
       if (checkoutRequested && session.pendingCheckout !== null) {
-        return finish(checkoutReadback(session.pendingCheckout));
+        if (session.pendingCheckout.lines.length) return finish(checkoutReadback(session.pendingCheckout));
+        // A check-in has no cart: read back what the bridge snapshotted (appointment details).
+        const details = checkoutResult.match(/^Read this back: (.*?)\. Then ask/)?.[1];
+        return finish(`${details ? `${details}. ` : ""}Please confirm on your phone to finish.`);
       }
     }
     return finish("I've reached the limit for this request. Please review your current order before asking for another change.");

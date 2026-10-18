@@ -3,8 +3,7 @@
 // browser and sends it on later visits. Only a hash of the secret is stored.
 
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
-import { rename, writeFile } from "node:fs/promises";
+import type { ProfilePersistence } from "./persistence.ts";
 
 export interface Profile {
   profileId: string;
@@ -15,6 +14,51 @@ export interface Profile {
   visits: number;
   /** Completed orders, newest last (a few per place). */
   orders?: SavedOrder[];
+  /** What the customer chose to have remembered. */
+  preferences?: Preferences;
+}
+
+export interface Preferences {
+  /** For the greeting: "Welcome back, Sam!" */
+  name?: string;
+  /** Speaking speed for spoken replies, 0.5 (slow) to 2 (fast). */
+  speechRate?: number;
+  diet?: Diet[];
+  /** In the customer's own words, e.g. "peanuts". The menu has no allergen data, so these are only flagged, never promised. */
+  allergies?: string[];
+}
+
+export const DIETS = ["vegetarian", "vegan"] as const;
+export type Diet = (typeof DIETS)[number];
+
+/** Cleans what the customer (or the model) asked to save. Returns an error to say aloud, or the clean values. */
+export function cleanPreferences(raw: unknown): { ok: true; value: Preferences } | { ok: false; error: string } {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { ok: false, error: "Nothing to save." };
+  const r = raw as Record<string, unknown>;
+  const out: Preferences = {};
+  if (r.name !== undefined) {
+    const name = typeof r.name === "string" ? r.name.replace(/[^\p{L}\p{M}' .-]/gu, "").trim().slice(0, 40) : "";
+    if (!name) return { ok: false, error: "That name didn't sound right. What should I call you?" };
+    out.name = name;
+  }
+  if (r.speechRate !== undefined) {
+    const rate = Number(r.speechRate);
+    if (!Number.isFinite(rate) || rate < 0.5 || rate > 2) return { ok: false, error: "Speaking speed must be between half speed and double speed." };
+    out.speechRate = Math.round(rate * 100) / 100;
+  }
+  if (r.diet !== undefined) {
+    const list = (Array.isArray(r.diet) ? r.diet : [r.diet]).map((d) => String(d).toLowerCase().trim());
+    const bad = list.filter((d) => !(DIETS as readonly string[]).includes(d));
+    if (bad.length) return { ok: false, error: `I can remember vegetarian or vegan, not "${bad[0]}".` };
+    out.diet = [...new Set(list)] as Diet[];
+  }
+  if (r.allergies !== undefined) {
+    const list = (Array.isArray(r.allergies) ? r.allergies : [r.allergies])
+      .map((a) => String(a).replace(/[^\p{L}\p{M}' -]/gu, "").trim().toLowerCase().slice(0, 30))
+      .filter(Boolean);
+    out.allergies = [...new Set(list)].slice(0, 10);
+  }
+  return { ok: true, value: out };
 }
 
 /** A completed order, kept so the customer can reorder it next time at the same place. */
@@ -40,40 +84,47 @@ function sameHash(a: string, b: string) {
   return x.length === y.length && timingSafeEqual(x, y);
 }
 
-export function createProfileStore(opts: { file?: string; now?: () => Date } = {}) {
+/**
+ * Profiles live in memory for fast, synchronous lookups; every change is written through to
+ * the persistence (Postgres or a file) in order. Call load() once at startup.
+ */
+export function createProfileStore(opts: { persistence?: ProfilePersistence; now?: () => Date } = {}) {
   const now = opts.now ?? (() => new Date());
   const profiles = new Map<string, Profile>();
   const bySession = new Map<string, string>(); // sessionId -> profileId
 
-  if (opts.file && existsSync(opts.file)) {
-    try {
-      for (const p of JSON.parse(readFileSync(opts.file, "utf8")) as Profile[]) profiles.set(p.profileId, p);
-    } catch (err) {
-      console.error("[profiles] couldn't read", opts.file, err);
-    }
-  }
-
-  // Writes go one at a time, to a temp file renamed into place, so a crash never leaves half a file.
+  // Writes go one at a time, in order, so a later change never lands before an earlier one.
   let writing: Promise<void> = Promise.resolve();
-  function save() {
-    if (!opts.file) return writing;
-    const file = opts.file;
-    const body = JSON.stringify([...profiles.values()], null, 2);
+  function save(changed: Profile) {
+    const persistence = opts.persistence;
+    if (!persistence) return writing;
+    const snapshot = structuredClone(changed);
+    const all = [...profiles.values()].map((p) => structuredClone(p));
     writing = writing
-      .then(() => writeFile(`${file}.tmp`, body))
-      .then(() => rename(`${file}.tmp`, file))
-      .catch((err) => console.error("[profiles] couldn't save", err));
+      .then(() => persistence.save(snapshot, all))
+      .catch((err) => console.error(`[profiles] couldn't save to ${persistence.name}`, err));
     return writing;
   }
 
   return {
+    /** Reads every saved profile. Ordering still works if this fails; profiles just start empty. */
+    async load() {
+      if (!opts.persistence) return;
+      try {
+        for (const p of await opts.persistence.load()) profiles.set(p.profileId, p);
+        console.log(`[profiles] ${profiles.size} profile(s) loaded from ${opts.persistence.name}`);
+      } catch (err) {
+        console.error(`[profiles] couldn't load from ${opts.persistence.name}`, err);
+      }
+    },
+
     /** A new profile. The token is shown to the phone once and never stored in plain text. */
     create(): { profile: Profile; token: string } {
       const secret = randomBytes(32).toString("base64url");
       const at = now().toISOString();
       const profile: Profile = { profileId: randomUUID(), secretHash: hash(secret), createdAt: at, lastSeenAt: at, visits: 0 };
       profiles.set(profile.profileId, profile);
-      void save();
+      void save(profile);
       return { profile, token: `${profile.profileId}.${secret}` };
     },
 
@@ -93,7 +144,7 @@ export function createProfileStore(opts: { file?: string; now?: () => Date } = {
         bySession.set(sessionId, profile.profileId);
         profile.visits += 1;
         profile.lastSeenAt = now().toISOString();
-        void save();
+        void save(profile);
       }
       return profile;
     },
@@ -112,7 +163,7 @@ export function createProfileStore(opts: { file?: string; now?: () => Date } = {
       const others = (profile.orders ?? []).filter((o) => o.place !== saved.place);
       const here = (profile.orders ?? []).filter((o) => o.place === saved.place);
       profile.orders = [...others, ...here.slice(-(ORDERS_PER_PLACE - 1)), saved];
-      void save();
+      void save(profile);
       return saved;
     },
 
@@ -127,6 +178,27 @@ export function createProfileStore(opts: { file?: string; now?: () => Date } = {
     },
 
     /** Resolves once pending writes are on disk (for tests). */
+    /** Saves the customer's preferences (only the fields given; an empty list clears one). */
+    setPreferences(profile: Profile, prefs: Preferences): Profile {
+      profile.preferences = { ...profile.preferences, ...prefs };
+      void save(profile);
+      return profile;
+    },
+
+    /** "Forget me": removes the profile and all its history, here and in storage. */
+    remove(profile: Profile) {
+      profiles.delete(profile.profileId);
+      for (const [sessionId, id] of bySession) if (id === profile.profileId) bySession.delete(sessionId);
+      const persistence = opts.persistence;
+      if (persistence) {
+        const all = [...profiles.values()].map((p) => structuredClone(p));
+        writing = writing
+          .then(() => persistence.remove(profile.profileId, all))
+          .catch((err) => console.error(`[profiles] couldn't delete from ${persistence.name}`, err));
+      }
+      return writing;
+    },
+
     flush: () => writing,
     size: () => profiles.size,
   };

@@ -6,6 +6,7 @@ import { join } from "node:path";
 import express from "express";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createProfileRoutes } from "./routes.ts";
+import { filePersistence } from "./persistence.ts";
 import { createProfileStore, type ProfileStore } from "./store.ts";
 
 let server: Server;
@@ -16,7 +17,7 @@ const sessions = new Map<string, { sessionSecret: string; ended: boolean; kioskI
 
 beforeEach(async () => {
   file = join(mkdtempSync(join(tmpdir(), "profiles-")), "profiles.json");
-  store = createProfileStore({ file });
+  store = createProfileStore({ persistence: filePersistence(file) });
   sessions.clear();
   sessions.set("s1", { sessionSecret: "secret-1", ended: false, kioskId: "store42-kiosk1" });
   const app = express();
@@ -97,7 +98,8 @@ describe("remember this phone", () => {
   it("remembers profiles across a server restart", async () => {
     const p = await newProfile();
     await store.flush();
-    const restarted = createProfileStore({ file });
+    const restarted = createProfileStore({ persistence: filePersistence(file) });
+    await restarted.load();
     expect(restarted.verify(p.profileToken)?.profileId).toBe(p.profileId);
     expect(restarted.verify(`${p.profileId}.wrong`)).toBeNull();
   });
@@ -128,5 +130,28 @@ describe("remember this phone", () => {
     expect(profile.orders?.map((o) => o.total)).toEqual([2, 3, 4]);
     expect(store.lastOrder(profile, "store42-kiosk1")?.total).toBe(4);
     expect(store.saveOrder("no-profile", { kioskId: "store42-kiosk1", lines: [], total: 0 })).toBeNull();
+  });
+
+  it("saves preferences, cleans them, and refuses bad values", async () => {
+    const p = await newProfile();
+    const patch = (body: unknown) => call("/api/profiles/me", { token: p.profileToken, body, method: "PATCH" });
+    const saved = await (await patch({ name: "  Sam <script>", diet: ["Vegetarian"], allergies: ["Peanuts", "peanuts"], speechRate: 0.8 })).json();
+    expect(saved.preferences).toEqual({ name: "Sam script", diet: ["vegetarian"], allergies: ["peanuts"], speechRate: 0.8 });
+    expect((await patch({ speechRate: 5 })).status).toBe(400);
+    expect((await patch({ diet: ["keto"] })).status).toBe(400);
+    expect((await call("/api/profiles/me", { token: "bad.token", body: { name: "x" }, method: "PATCH" })).status).toBe(401);
+    // Only the fields sent change.
+    expect((await (await patch({ name: "Sam" })).json()).preferences).toMatchObject({ name: "Sam", diet: ["vegetarian"] });
+  });
+
+  it("forget me deletes the profile, its history and its saved file entry", async () => {
+    const p = await newProfile();
+    await call("/api/profiles/attach", { token: p.profileToken, body: { sessionId: "s1", sessionSecret: "secret-1" } });
+    store.saveOrder("s1", { kioskId: "store42-kiosk1", lines: [{ itemId: "cookie", name: "Cookie", qty: 1, options: {} }], total: 1.42 });
+    expect((await call("/api/profiles/me", { token: p.profileToken, method: "DELETE" })).status).toBe(204);
+    expect((await call("/api/profiles/me", { token: p.profileToken })).status).toBe(401);
+    expect(store.forSession("s1")).toBeNull();
+    await store.flush();
+    expect(readFileSync(file, "utf8")).not.toContain(p.profileId);
   });
 });
