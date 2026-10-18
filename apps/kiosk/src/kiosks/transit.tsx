@@ -122,7 +122,7 @@ function Body({ qrUrl, status }: { qrUrl: string | null; status: ConnectionStatu
           <div className="welcome-hero">
             <p className="eyebrow">{brand.name}</p>
             <h1 data-kiosk-title="">Where are you headed?</h1>
-            <p className="welcome-sub">Buy light-rail tickets and day passes. Card or phone payment.</p>
+            <p className="welcome-sub">Buy light-rail tickets and day passes. Pay by card at this machine.</p>
             <button className="btn-red start-btn" type="button" data-kiosk-id="btn-start" onClick={() => s.go("origin")}>
               Buy a ticket
             </button>
