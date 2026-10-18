@@ -129,11 +129,6 @@ export function ItemModal() {
           ✕
         </button>
         <div className="modal-scroll">
-          <div className="modal-hero" aria-hidden="true">
-          {itemPhoto(item.id)
-            ? <img src={itemPhoto(item.id)!} alt="" className="modal-hero-img" />
-            : <span>{itemEmoji(item.id)}</span>}
-        </div>
           <h2 className="modal-title">{item.name}</h2>
           <p className="muted">{item.description}</p>
           <p className="modal-price">{money(item.price)}</p>
