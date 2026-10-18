@@ -7,7 +7,7 @@ import type { ChatMessage } from "./store.ts";
 import { usePhone } from "./store.ts";
 import { createAgentVoice } from "./agentSpeech.ts";
 import { bindVoiceSocket } from "./voiceSocket.ts";
-import { greeting, placeName, placeNameForKind, wantsToStart } from "./greeting.ts";
+import { greeting, kioskKind, placeName, placeNameForKind, wantsToStart, WELCOME, type Kind } from "./greeting.ts";
 import { speechSupport } from "./speech.ts";
 import { enableVoiceFallback, prepareMic, releaseMic, unlockAudio } from "./voiceFallback.ts";
 import { navigate } from "./nav.ts";
@@ -62,6 +62,7 @@ export function App() {
   const endReason          = usePhone(s => s.endReason);
   const awaitingConfirmation = usePhone(s => s.awaitingConfirmation);
   const kioskState         = usePhone(s => s.kioskState);
+  const kioskId            = usePhone(s => s.kioskId);
   const orderingStarted    = usePhone(s => s.orderingStarted);
   const speechRate         = usePhone(s => s.speechRate);
 
@@ -98,6 +99,7 @@ export function App() {
     (async () => {
       try {
         const sess = await createSession(params);
+        store.setKioskId(sess.kioskId);
         if (cancelled) return;
         socket = connectSocket(sess.sessionId, sess.sessionSecret);
         socketRef.current = socket;
@@ -213,7 +215,7 @@ export function App() {
   const enterChat = useCallback((withVoice: boolean, auto = false) => {
     const store = usePhone.getState();
     store.setOrderingStarted(true);
-    const hello = greeting(store.kioskState, store.profile);
+    const hello = greeting(store.kioskState, store.profile, store.kioskId);
     store.pushMessage({ id: uid(), role: "agent", text: hello, awaitingConfirmation: false });
     if (withVoice) {
       unlockAudio(); // iPhones only allow recording audio after a tap
@@ -246,10 +248,11 @@ export function App() {
     }
     voice.setEnabled(true);
     setWelcome("asking");
-    const answer = await voice.ask(`Welcome to ${placeName(usePhone.getState().kioskState)}. Do you want to start ordering?`, { auto });
+    const now = usePhone.getState();
+    const answer = await voice.ask(`Welcome to ${placeName(now.kioskState, now.kioskId)}. ${WELCOME[kioskKind(now.kioskState, now.kioskId)].question}`, { auto });
     if (answer && wantsToStart(answer)) { setWelcome("idle"); enterChat(true, auto); return; }
     setWelcome(answer ? "declined" : "unheard");
-    if (answer) void voice.speakFeedback("Okay. Tap Start ordering whenever you're ready.");
+    if (answer) void voice.speakFeedback("Okay. Tap the start button whenever you're ready.");
   }, [enterChat]);
   askToStartRef.current = (auto) => { void askToStart(auto); };
 
@@ -299,7 +302,8 @@ export function App() {
   if (!orderingStarted) return (
     <>
       <StartScreen
-        place={placeName(kioskState)}
+        place={placeName(kioskState, kioskId)}
+        kind={kioskKind(kioskState, kioskId)}
         status={voiceListening ? "listening" : agentSpeaking ? "asking" : welcome}
         micNeedsTap={micNeedsTap}
         onStartVoice={() => { void askToStart(); }}
@@ -535,14 +539,15 @@ const WELCOME_STATUS: Record<WelcomeStatus, string> = {
   idle: "Tap anywhere to start talking.",
   asking: "Speaking…",
   listening: "Listening… say yes to start.",
-  declined: "No problem. Tap Start ordering whenever you're ready.",
-  unheard: "I didn't catch that. Tap Start ordering to try again.",
+  declined: "No problem. Tap the start button whenever you're ready.",
+  unheard: "I didn't catch that. Tap the start button to try again.",
 };
 
-const MIC_NOTE = "Tap Start ordering. Your phone will ask to use the microphone: tap Allow.";
+const MIC_NOTE = "Tap the start button. Your phone will ask to use the microphone: tap Allow.";
 
-function StartScreen({ place, status, micNeedsTap, onStartVoice, onStartText, onProfile }: {
+function StartScreen({ place, kind, status, micNeedsTap, onStartVoice, onStartText, onProfile }: {
   place: string;
+  kind: Kind;
   status: WelcomeStatus;
   micNeedsTap: boolean;
   onStartVoice(): void;
@@ -567,8 +572,8 @@ function StartScreen({ place, status, micNeedsTap, onStartVoice, onStartText, on
           <span /><span /><span />
           <MicIcon active={status === "listening"} size={40} />
         </div>
-        <h1 className="welcome-heading">Hi! Ready to order?</h1>
-        <p className="welcome-sub">Just talk. I&apos;ll tap through the kiosk for you and read everything back before you pay.</p>
+        <h1 className="welcome-heading">{WELCOME[kind].heading}</h1>
+        <p className="welcome-sub">{WELCOME[kind].sub}</p>
         <p className="welcome-status" aria-live="polite">{!hasSpeech ? "Type your order below." : micNeedsTap && status === "idle" ? MIC_NOTE : WELCOME_STATUS[status]}</p>
       </div>
 
@@ -578,7 +583,7 @@ function StartScreen({ place, status, micNeedsTap, onStartVoice, onStartText, on
         {hasSpeech && (
           <button className="btn btn-primary btn-xl" type="button" onClick={onStartVoice} disabled={busy} autoFocus>
             <MicIcon active={false} size={26} />
-            Start ordering
+            {WELCOME[kind].start}
           </button>
         )}
         <button className="btn btn-outline" type="button" onClick={onStartText}>
@@ -638,9 +643,7 @@ function ConversationScreen({
     speaking:  "Speaking…",
   };
 
-  const brandName = kioskState?.kioskId
-    ? kioskState.kioskId.replace(/[-_]/g, " ").replace(/\b\w/g, c => c.toUpperCase())
-    : "AllScreen";
+  const brandName = placeName(kioskState, usePhone.getState().kioskId);
 
   return (
     <div className="conv-page" role="main" aria-label="Ordering conversation">
@@ -882,26 +885,36 @@ function PayAtReaderScreen({ kioskState, onEnd, onRepeat }: { kioskState: KioskS
 // OrderCompleteScreen
 // ============================================================
 
+const COMPLETE_COPY: Record<Kind, { banner: string; heading: string; body: string; number: string }> = {
+  food: { banner: "Order placed successfully", heading: "Order complete", body: "Thank you! Your order is confirmed and being prepared.", number: "Order number" },
+  clinic: { banner: "You're checked in", heading: "Check-in complete", body: "Thank you! Please have a seat. You'll be called when the doctor is ready.", number: "Your number" },
+  cinema: { banner: "Tickets booked", heading: "Enjoy the movie!", body: "Your tickets are confirmed. They'll print or show on the kiosk.", number: "Booking number" },
+  transit: { banner: "Ticket ready", heading: "Ticket complete", body: "Thank you! Take your ticket from the machine.", number: "Ticket number" },
+};
+
 function OrderCompleteScreen({ kioskState }: { kioskState: KioskState | null }) {
   const orderNumber = kioskState?.orderNumber;
+  const kind = kioskKind(kioskState, usePhone.getState().kioskId);
+  const copy = COMPLETE_COPY[kind];
   return (
-    <div className="page" role="main" aria-label="Order complete">
+    <div className="page" role="main" aria-label={copy.heading}>
       <p className="sr-only" aria-live="polite">
-        Order complete{orderNumber ? `, order number ${orderNumber}` : ""}.
+        {copy.heading}{orderNumber ? `, ${copy.number.toLowerCase()} ${orderNumber}` : ""}.
       </p>
       <header className="welcome-top"><AppLogo /></header>
       <div className="centred-page">
         <div className="complete-check" aria-hidden="true">
           <CheckmarkIcon size={36} color="var(--sage-text)" />
         </div>
-        <div className="panel panel-sage" role="status">Order placed successfully</div>
-        <h1>Order complete</h1>
-        <p>Thank you! Your order is confirmed and being prepared.</p>
+        <div className="panel panel-sage" role="status">{copy.banner}</div>
+        <h1>{copy.heading}</h1>
+        <p>{copy.body}</p>
         {orderNumber && (
           <p>
-            <strong>Order number: {orderNumber}</strong>
+            <strong>{copy.number}: {orderNumber}</strong>
           </p>
         )}
+        <a className="btn btn-outline" href="/profile">See my order history</a>
       </div>
     </div>
   );
@@ -984,6 +997,8 @@ function ProfileCard() {
   );
 }
 
+const COMMON_ALLERGIES = ["peanuts", "tree nuts", "dairy", "eggs", "gluten", "shellfish", "soy"];
+
 /** Edit what's remembered: name, diet, allergies and speaking speed. Saved on the server. */
 function ProfileEditor() {
   const profile = usePhone(s => s.profile);
@@ -997,6 +1012,10 @@ function ProfileEditor() {
 
   if (!profile) return <p className="settings-label">Your profile appears after you start an order.</p>;
 
+  const picked = allergies.split(",").map(a => a.trim().toLowerCase()).filter(Boolean);
+  const toggleAllergy = (a: string) => setAllergies(
+    (picked.includes(a) ? picked.filter(x => x !== a) : [...picked, a]).join(", "),
+  );
   const toggleDiet = (d: string) => setDiet(cur => cur.includes(d) ? cur.filter(x => x !== d) : [...cur, d]);
   const save = async () => {
     setStatus("Saving…");
@@ -1025,9 +1044,19 @@ function ProfileEditor() {
           </button>
         ))}
       </div>
+      <div className="profile-field" role="group" aria-label="Common allergies">
+        <span>Allergies: tap any that apply</span>
+        <div className="chip-row">
+          {COMMON_ALLERGIES.map(a => (
+            <button key={a} className="chip" type="button" aria-pressed={picked.includes(a)} onClick={() => toggleAllergy(a)}>
+              {a}
+            </button>
+          ))}
+        </div>
+      </div>
       <label className="profile-field">
-        <span>Allergies (separate with commas)</span>
-        <input className="text-field" value={allergies} onChange={e => setAllergies(e.target.value)} placeholder="e.g. peanuts, shellfish" />
+        <span>Something else? (separate with commas)</span>
+        <input className="text-field" value={allergies} onChange={e => setAllergies(e.target.value)} placeholder="e.g. sesame, mustard" />
       </label>
       <p className="profile-card-hint">The menu has no allergen details, so the assistant will flag these but can&apos;t promise an item is safe.</p>
       <button className="btn btn-primary" type="button" onClick={save}>Save profile</button>

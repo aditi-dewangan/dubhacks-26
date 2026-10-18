@@ -1462,3 +1462,14 @@ body, .page {
   .voice-orb > span { animation: none !important; }
   .btn, .bubble, .sheet { transition: none; animation: none; }
 }
+
+/* Quick-pick chips (allergies) */
+.chip-row { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.chip {
+  min-height: 44px; padding: 0.4rem 1rem; border-radius: var(--radius-pill, 999px);
+  border: 1.5px solid var(--border-med); background: rgba(255, 255, 255, 0.85);
+  color: var(--text-2); font-size: 0.95rem; font-weight: 600; cursor: pointer;
+  transition: background 0.14s, color 0.14s, border-color 0.14s;
+}
+.chip[aria-pressed="true"] { background: var(--indigo); border-color: var(--indigo); color: var(--white); }
+.chip:focus-visible { outline: 3px solid var(--peach); outline-offset: 2px; }
