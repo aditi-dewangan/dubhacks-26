@@ -7,11 +7,11 @@ import type { ChatMessage } from "./store.ts";
 import { usePhone } from "./store.ts";
 import { createAgentVoice } from "./agentSpeech.ts";
 import { bindVoiceSocket } from "./voiceSocket.ts";
-import { greeting, kioskKind, placeName, placeNameForKind, type Kind } from "./greeting.ts";
+import { greeting, kioskKind, placeName, placeNameForKind, WELCOME, type Kind } from "./greeting.ts";
 import { speechLog, speechSupport } from "./speech.ts";
-import { enableVoiceFallback, prepareMic, releaseMic, unlockAudio } from "./voiceFallback.ts";
+import { enableVoiceFallback, releaseMic, unlockAudio } from "./voiceFallback.ts";
 import { navigate } from "./nav.ts";
-import { iosNonSafari, permissionSteps, queryPermission, type Device } from "./permissions.ts";
+import { permissionSteps, queryPermission, type Device } from "./permissions.ts";
 import { CAMERA_PROBLEM_TEXT, CameraError, startQrScanner, type CameraProblem } from "./qrScanner.ts";
 import { MENU_ITEMS } from "./menuData.ts";
 
@@ -74,10 +74,8 @@ export function App() {
   const [settingsOpen,  setSettingsOpen]  = useState(false);
   const [cartReviewOpen, setCartReviewOpen] = useState(false);
   const [permissionHelp, setPermissionHelp] = useState<Device | null>(null);
-  // The phone wouldn't speak yet (iPhones need one touch first): show a "Tap to hear" button.
-  const [speechBlocked, setSpeechBlocked] = useState(false);
+  // Set once the phone has actually spoken (iPhones need a touch first).
   const heardRef = useRef(false);
-  const startOrderingRef = useRef<() => void>(() => {});
 
   // Keep speech rate accessible to agentVoice without re-creating it on every render
   const speechRateRef = useRef(speechRate);
@@ -128,10 +126,7 @@ export function App() {
           permissionDenied: () => setPermissionHelp("microphone"),
           setSpeaking: (v) => setAgentSpeaking(v),
           setListening: (v) => setVoiceListening(v),
-          speechBlocked: (blocked) => {
-            if (!blocked) heardRef.current = true;
-            setSpeechBlocked(blocked && !heardRef.current);
-          },
+          speechBlocked: (blocked) => { if (!blocked) heardRef.current = true; },
         }, () => speechRateRef.current);
         voiceRef.current = voice;
 
@@ -142,8 +137,7 @@ export function App() {
         socket.on("connect", () => {
           if (cancelled) return;
           store.setPhase("active");
-          // Straight into the chat: the mic is asked for right away, then the assistant greets and listens.
-          if (!usePhone.getState().orderingStarted) startOrderingRef.current();
+          // The start page shows next; its tap starts the voice (see startOrdering).
         });
         socket.on("connect_error", e => {
           if (!cancelled) store.setError("connect_failed", e.message);
@@ -230,26 +224,17 @@ export function App() {
     const last = [...usePhone.getState().messages].reverse().find(m => m.role === "agent");
     voiceRef.current?.replaySilent(last?.text);
   }, []);
-  // Room above the first message for the "Tap to hear" button.
-  useEffect(() => { document.body.classList.toggle("speech-blocked", speechBlocked); }, [speechBlocked]);
   useEffect(() => {
     document.addEventListener("pointerdown", unlockSpeech);
     return () => document.removeEventListener("pointerdown", unlockSpeech);
   }, [unlockSpeech]);
 
-  // Runs right after connecting, with no welcome screen or tap. The mic prompt comes first (Chrome on
-  // iPhone asks on every visit), then the chat opens with voice. iPhones keep the greeting silent
-  // until the first touch on the page; that touch plays it (replaySilent above).
-  const startOrdering = useCallback(async () => {
-    if (!voiceRef.current || !speechSupport().recognition) { enterChat(false); return; }
+  // The tap on the start page. iPhones only let a page speak after a touch, so the greeting is
+  // spoken right here, inside the tap; the mic opens after it (the browser asks for it then).
+  const startOrdering = useCallback(() => {
     unlockAudio();
-    const mic = await queryPermission("microphone");
-    const blocked = mic === "denied" || (mic !== "granted" && iosNonSafari() && (await prepareMic()) === "denied");
-    if (usePhone.getState().orderingStarted) return;
-    if (blocked) { enterChat(false); setPermissionHelp("microphone"); return; }
-    enterChat(true, true);
+    enterChat(Boolean(voiceRef.current && speechSupport().recognition));
   }, [enterChat]);
-  startOrderingRef.current = () => { void startOrdering(); };
 
   // Stop the conversation loop on screens where voice ordering doesn't apply (Nidhi).
   useEffect(() => {
@@ -293,8 +278,12 @@ export function App() {
   }} />;
   if (ks === "complete") return <OrderCompleteScreen kioskState={kioskState} />;
   if (awaitingConfirmation) return <ConfirmOrderScreen cart={kioskState?.cart ?? null} onConfirm={sendConfirm} />;
-  // Only while the browser's mic prompt is up; the chat opens right after.
-  if (!orderingStarted) return <><ConnectingScreen />{micHelp}</>;
+  if (!orderingStarted) return (
+    <>
+      <StartPage place={placeName(kioskState, kioskId)} kind={kioskKind(kioskState, kioskId)} onStart={startOrdering} />
+      {DEBUG && <SpeechDebug />}
+    </>
+  );
 
   return (
     <>
@@ -312,11 +301,6 @@ export function App() {
         onCartReview={() => setCartReviewOpen(true)}
       />
       {DEBUG && <SpeechDebug />}
-      {speechBlocked && (
-        <button type="button" className="btn btn-primary speech-unlock" onClick={unlockSpeech} autoFocus>
-          <SpeakerIcon /> Tap to hear the assistant
-        </button>
-      )}
       {settingsOpen && <SettingsSheet onClose={() => setSettingsOpen(false)} />}
       {micHelp}
       {cartReviewOpen && kioskState?.cart && (
@@ -512,6 +496,36 @@ function ConnectingScreen() {
         <p className="connecting-sub" aria-live="polite">
           Please wait while we connect your phone.
         </p>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// StartPage: shown right after the scan. Its tap is the touch iPhones need before the page
+// may speak, so the chat that follows talks immediately and stays hands-free.
+// ============================================================
+
+function StartPage({ place, kind, onStart }: { place: string; kind: Kind; onStart(): void }) {
+  return (
+    <div className="page welcome-page" role="main">
+      <header className="welcome-top">
+        <AppLogo />
+        <span className="place-chip" role="status"><span className="place-dot" aria-hidden="true" />{place}</span>
+      </header>
+      <div className="welcome-hero">
+        <div className="voice-orb" aria-hidden="true">
+          <span /><span /><span />
+          <MicIcon active={false} size={40} />
+        </div>
+        <h1 className="welcome-heading">{WELCOME[kind].heading}</h1>
+        <p className="welcome-sub">{WELCOME[kind].sub}</p>
+      </div>
+      <div className="welcome-actions">
+        <button className="btn btn-primary btn-xl" type="button" onClick={onStart} autoFocus>
+          <MicIcon active={false} size={26} />
+          {WELCOME[kind].start}
+        </button>
       </div>
     </div>
   );
@@ -1285,15 +1299,6 @@ function SpeechDebug() {
   const [, tick] = useState(0);
   useEffect(() => { const id = window.setInterval(() => tick(n => n + 1), 500); return () => window.clearInterval(id); }, []);
   return <pre className="speech-debug" aria-hidden="true">{speechLog.join("\n") || "no speech yet"}</pre>;
-}
-
-function SpeakerIcon() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
-      <path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor" />
-      <path d="M16.5 8.5a5 5 0 010 7M19 6a8.5 8.5 0 010 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-    </svg>
-  );
 }
 
 function MicIcon({ active, size = 24 }: { active: boolean; size?: number }) {
