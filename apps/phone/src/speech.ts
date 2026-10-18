@@ -167,7 +167,8 @@ export function createSpeechController(environment: () => SpeechEnvironment = br
         timer = setTimeout(() => { finish(new SpeechError("timeout")); synthesis.cancel(); }, 60_000);
         if (options.startTimeoutMs) {
           utterance.onstart = () => clearTimeout(startTimer);
-          startTimer = setTimeout(() => { finish(new SpeechError("failed")); synthesis.cancel(); }, options.startTimeoutMs);
+          // notStarted: the phone wouldn't speak (iPhones stay silent until the first touch).
+          startTimer = setTimeout(() => { finish(Object.assign(new SpeechError("failed"), { notStarted: true })); synthesis.cancel(); }, options.startTimeoutMs);
         }
         try { synthesis.speak(utterance); } catch { finish(new SpeechError("failed")); }
       });

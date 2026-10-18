@@ -10,6 +10,7 @@ import { bindVoiceSocket } from "./voiceSocket.ts";
 import { greeting, placeName, placeNameForKind, wantsToStart } from "./greeting.ts";
 import { speechSupport } from "./speech.ts";
 import { enableVoiceFallback, prepareMic, releaseMic, unlockAudio } from "./voiceFallback.ts";
+import { navigate } from "./nav.ts";
 import { iosNonSafari, permissionSteps, queryPermission, type Device } from "./permissions.ts";
 import { CAMERA_PROBLEM_TEXT, CameraError, startQrScanner, type CameraProblem } from "./qrScanner.ts";
 import { MENU_ITEMS } from "./menuData.ts";
@@ -213,7 +214,8 @@ export function App() {
 
   // The first touch anywhere lets iPhones play speech and record (they block both until a tap).
   useEffect(() => {
-    const unlock = () => unlockAudio();
+    // ...and plays anything the phone couldn't say before that touch.
+    const unlock = () => { unlockAudio(); voiceRef.current?.replaySilent(); };
     document.addEventListener("pointerdown", unlock, { once: true });
     return () => document.removeEventListener("pointerdown", unlock);
   }, []);
@@ -358,7 +360,7 @@ export function QrScannerScreen() {
         if (!path) return false; // some other QR code, keep scanning
         setFound(true);
         navigator.vibrate?.(60);
-        window.location.href = path;
+        navigate(path); // no reload, so the mic isn't asked for again
         return true;
       });
       setCamera("on");
@@ -392,7 +394,7 @@ export function QrScannerScreen() {
       return;
     }
     setCodeError("");
-    window.location.href = `/c/${code}`;
+    navigate(`/c/${code}`);
   };
 
   return (

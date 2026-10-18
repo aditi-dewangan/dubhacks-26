@@ -33,8 +33,9 @@ export function voiceFallbackAvailable() {
   return Boolean(AudioContextImpl && typeof navigator !== "undefined" && navigator.mediaDevices?.getUserMedia);
 }
 
-// One microphone stream for the whole visit, so the browser asks at most once
-// (some iPhone browsers ask again every time a page opens the mic).
+// The mic is opened for each answer and closed right after. Keeping it open would make iPhones
+// play speech through the quiet earpiece instead of the speaker. Browsers remember the "Allow"
+// for the page, so reopening it doesn't ask again.
 let mic: MediaStream | null = null;
 async function getMic(): Promise<MediaStream> {
   if (mic && mic.getAudioTracks().some((t) => t.readyState === "live")) return mic;
@@ -45,7 +46,7 @@ async function getMic(): Promise<MediaStream> {
 }
 /** Open the mic now (from the Start tap) so the browser asks right away, not after the greeting. */
 export async function prepareMic(): Promise<"ok" | "denied" | "failed"> {
-  try { await getMic(); return "ok"; }
+  try { await getMic(); releaseMic(); return "ok"; }
   catch (err) { return micError(err).code === "permission_denied" ? "denied" : "failed"; }
 }
 
@@ -79,7 +80,7 @@ function recordUtterance(isCancelled: () => boolean, onCancel: (fn: () => void) 
       plain?.stop();
       try { processor?.disconnect(); source?.disconnect(); } catch { /* already gone */ }
       if (processor) processor.onaudioprocess = null;
-      // The stream stays open for the next answer; releaseMic() turns it off at the end.
+      releaseMic(); // close the mic so speech plays through the speaker again
     };
     const finish = (error?: SpeechError) => {
       if (done) return;
@@ -148,6 +149,7 @@ function recordUtterance(isCancelled: () => boolean, onCancel: (fn: () => void) 
             if (result instanceof SpeechError) { finish(result); return; }
             done = true;
             window.clearInterval(watchdog);
+            releaseMic();
             resolve(result);
           });
           return;
