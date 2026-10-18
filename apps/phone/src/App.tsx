@@ -7,6 +7,7 @@ import { usePhone } from "./store.ts";
 import { createAgentVoice } from "./agentSpeech.ts";
 import { bindVoiceSocket } from "./voiceSocket.ts";
 import { speechSupport } from "./speech.ts";
+import { MENU_ITEMS } from "./menuData.ts";
 
 let _id = 0;
 const uid = () => String(++_id);
@@ -308,7 +309,7 @@ function QrScannerScreen() {
 
   return (
     <div className="page" role="main" aria-label="Scan the kiosk QR code">
-      <p className="page-brand" aria-hidden="true">Kiosk Access</p>
+      <p className="page-brand" aria-hidden="true">AllScreen</p>
       <div className="scanner-inner">
         <h1 style={{ fontSize: "1.625rem", fontWeight: 800, color: "var(--text)", alignSelf: "flex-start", letterSpacing: "-0.02em" }}>
           Scan the kiosk
@@ -369,6 +370,11 @@ function QrScannerScreen() {
         )}
 
         {cameraError && <p className="voice-error-msg" role="alert">{cameraError}</p>}
+
+        <div className="scanner-menu-preview">
+          <p className="scanner-menu-heading">Today's Menu</p>
+          <MenuCarousel compact />
+        </div>
       </div>
     </div>
   );
@@ -416,15 +422,12 @@ function StartScreen({ kioskId, onStartVoice, onStartText }: {
           Connected{kioskId ? ` · ${kioskId}` : ""}
         </div>
 
-        {/* Food media — replace src with real photography when available */}
-        <div className="start-media" aria-hidden="true">
-          <FoodIllustration />
-        </div>
-
         <div className="start-text">
           <h1 className="start-heading">Your order,<br />your way.</h1>
           <p className="start-sub">Tell us what you&apos;re craving. We&apos;ll handle the rest.</p>
         </div>
+
+        <MenuCarousel />
 
         <div className="start-actions">
           {hasSpeech && (
@@ -488,7 +491,7 @@ function ConversationScreen({
 
   const brandName = kioskState?.kioskId
     ? kioskState.kioskId.replace(/[-_]/g, " ").replace(/\b\w/g, c => c.toUpperCase())
-    : "Kiosk Access";
+    : "AllScreen";
 
   return (
     <div className="conv-page" role="main" aria-label="Ordering conversation">
@@ -608,7 +611,7 @@ function ConfirmOrderScreen({ cart, onConfirm }: { cart: Cart | null; onConfirm(
 
   return (
     <div className="confirm-page" role="main" aria-label="Review your order">
-      <p className="page-brand" aria-hidden="true">Kiosk Access</p>
+      <p className="page-brand" aria-hidden="true">AllScreen</p>
       <div className="confirm-inner">
         <h1 className="confirm-heading">Review your order</h1>
 
@@ -698,7 +701,7 @@ function PayAtReaderScreen({ kioskState, onEnd, onRepeat }: { kioskState: KioskS
       <p className="sr-only" aria-live="assertive">
         Please pay at the kiosk reader{total != null ? `, total $${total.toFixed(2)}` : ""}.
       </p>
-      <p className="page-brand" aria-hidden="true">Kiosk Access</p>
+      <p className="page-brand" aria-hidden="true">AllScreen</p>
       <div className="centred-page">
         <div className="pay-icon-wrap" aria-hidden="true"><ReaderIcon /></div>
         <h1>Pay at the reader</h1>
@@ -732,7 +735,7 @@ function OrderCompleteScreen({ kioskState }: { kioskState: KioskState | null }) 
       <p className="sr-only" aria-live="polite">
         Order complete{orderNumber ? `, order number ${orderNumber}` : ""}.
       </p>
-      <p className="page-brand" aria-hidden="true">Kiosk Access</p>
+      <p className="page-brand" aria-hidden="true">AllScreen</p>
       <div className="centred-page">
         <div className="complete-check" aria-hidden="true">
           <CheckmarkIcon size={36} color="var(--sage-text)" />
@@ -758,7 +761,7 @@ function SessionEndedScreen({ heading, body, recovery }: EndInfo) {
   return (
     <div className="page" role="main">
       <p className="sr-only" aria-live="polite">{heading}. {body}</p>
-      <p className="page-brand" aria-hidden="true">Kiosk Access</p>
+      <p className="page-brand" aria-hidden="true">AllScreen</p>
       <div className="centred-page">
         <h1 tabIndex={-1}>{heading}</h1>
         <p>{body}</p>
@@ -780,7 +783,7 @@ function CantConnectScreen({ code, detail }: { code: string; detail?: string }) 
   return (
     <div className="page" role="main">
       <p className="sr-only" aria-live="assertive">{info.heading}. {info.body}</p>
-      <p className="page-brand" aria-hidden="true">Kiosk Access</p>
+      <p className="page-brand" aria-hidden="true">AllScreen</p>
       <div className="centred-page">
         <h1 tabIndex={-1}>{info.heading}</h1>
         <div className="panel panel-peach">{info.body}</div>
@@ -1094,6 +1097,25 @@ function KeyboardIcon() {
   );
 }
 
+function MenuCarousel({ compact = false }: { compact?: boolean }) {
+  return (
+    <div className="menu-carousel-wrap">
+      {!compact && <p className="menu-carousel-label">Menu</p>}
+      <div className="menu-carousel" role="list" aria-label="Menu items">
+        {MENU_ITEMS.map(item => (
+          <div key={item.id} className="menu-card" role="listitem">
+            <img src={item.image} alt={item.name} className="menu-card-img" loading="lazy" />
+            <div className="menu-card-body">
+              <p className="menu-card-name">{item.name}</p>
+              <p className="menu-card-price">${item.price.toFixed(2)}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /** Food illustration used on the Start screen — swap for real photography later. */
 function FoodIllustration() {
   return (
@@ -1157,7 +1179,7 @@ function AppLogo() {
         <line x1="16" y1="25" x2="16" y2="28" stroke="white" strokeWidth="2" strokeLinecap="round" />
         <line x1="12" y1="28" x2="20" y2="28" stroke="white" strokeWidth="2" strokeLinecap="round" />
       </svg>
-      <span className="app-logo-name">Kiosk Access</span>
+      <span className="app-logo-name">AllScreen</span>
     </div>
   );
 }
@@ -1289,7 +1311,7 @@ export function DemoApp() {
         gap: "0.375rem",
       }}>
         <p style={{ color: "rgba(255,255,255,0.45)", fontSize: "0.7rem", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>
-          Kiosk Access
+          AllScreen
         </p>
         <div style={{ display: "flex", gap: "0.5rem", overflowX: "auto", paddingBottom: "0.25rem" }}>
           {DEMO_SCREENS.map(s => (
