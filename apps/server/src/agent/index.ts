@@ -5,7 +5,7 @@ import { getKioskState, getSession, sendAgentMessage, logEvent } from "../realti
 import { createAgent } from "./service.ts";
 import { readAgentMode } from "./config.ts";
 import { createLazyGeminiModel } from "./gemini.ts";
-import { executeTool } from "../bridge/index.ts";
+import { executeTool, interceptUserMessage } from "../bridge/index.ts";
 import { describeOrder, lastOrderForSession } from "../profiles/index.ts";
 
 const agent = createAgent({
@@ -34,6 +34,9 @@ const agent = createAgent({
 });
 
 export async function handleUserMessage(sessionId: string, text: string): Promise<AgentMessage> {
+  // While a checkout is pending, a whole-message "yes" confirms it here; anything else clears it.
+  const confirmed = await interceptUserMessage(sessionId, text);
+  if (confirmed) return confirmed;
   return agent.handleUserMessage(sessionId, text);
 }
 

@@ -29,6 +29,10 @@ export const agentTools = [
     parametersJsonSchema: object() },
   { name: "cancel_order", description: "Clear the order when the customer explicitly asks to start over or cancel.",
     parametersJsonSchema: object() },
+  { name: "press_button", description: "On a clinic, cinema or transit kiosk, press an on-screen button by its ID or label after the customer chooses. Pay and Complete check-in can't be pressed; use request_checkout.",
+    parametersJsonSchema: object({ buttonId: id }, ["buttonId"]) },
+  { name: "type_text", description: "On a clinic, cinema or transit kiosk, type the customer's answer into an on-screen text field by its ID or label. Only type what the customer said; never invent personal details.",
+    parametersJsonSchema: object({ fieldId: id, text: { type: "string", minLength: 1, maxLength: 80 } }, ["fieldId", "text"]) },
 ] as const;
 
 export type AgentToolName = (typeof agentTools)[number]["name"];

@@ -59,7 +59,17 @@ Ask for required options for every distinct version before adding any of them.
 When the customer is finished, call request_checkout and read back the order and total.
 Only the Bridge's confirmation handler can start payment; there is no payment tool.
 Previous conversation may be shortened. The latest kiosk state overrides older cart descriptions.
-Use at most eight tools in a response. Prefer one action at a time so you can see its result.` : `CURRENT CAPABILITY: READ-ONLY MENU ASSISTANT.
+Use at most eight tools in a response. Prefer one action at a time so you can see its result.
+OTHER KIOSKS: if the kiosk state's kind is clinic, cinema or transit, there is no menu and the
+food tools don't apply. Read its title, info, fields and buttons, explain the screen in one short
+sentence, and drive it with press_button and type_text. The customer can't see or touch the
+screen: never tell them to press anything. You press buttons for them. When their goal is clear
+(for example they want to see what's playing, buy a ticket, or check in), press the button that
+gets there (like Buy tickets or Check in) yourself, then describe the next screen.
+Ask the customer for every answer (name,
+date of birth, destination, showtime, seats...) and type exactly what they say; never invent or
+guess personal details. When the screen shows the final review, call request_checkout and read it
+back; the customer confirms on their phone. You can never press Pay or Complete check-in yourself.` : `CURRENT CAPABILITY: READ-ONLY MENU ASSISTANT.
 No action tools are connected in this version. You may answer menu and current-state questions,
 but cannot add or change items, answer a popup, request checkout, or confirm payment.
 For an action request, briefly explain that ordering is not connected yet; do not pretend to do it.
@@ -77,6 +87,14 @@ ${JSON.stringify(itemsByCategory)}`;
 
 /** Explicitly select kiosk data; session secrets and account configuration never enter a prompt. */
 export function buildTurnContext(state: KioskState | null): string {
+  if (state && state.kind && state.kind !== "food") {
+    // Clinic, cinema and transit kiosks are driven by what's on screen, so the model sees it all.
+    return JSON.stringify({
+      kind: state.kind, screen: state.screen, title: state.title, info: state.info, fields: state.fields,
+      buttons: state.buttons.filter((b) => b.enabled).map(({ id, label }) => ({ id, label })),
+      cart: state.cart, popup: state.popup, orderNumber: state.orderNumber,
+    });
+  }
   return JSON.stringify(state ? {
     screen: state.screen, title: state.title, cart: state.cart,
     popup: state.popup, orderNumber: state.orderNumber,
