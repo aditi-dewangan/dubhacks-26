@@ -13,6 +13,8 @@ import { routes } from "./routes.ts";
 const origin = config.corsOrigins?.length && !config.corsOrigins.includes("*") ? config.corsOrigins : true;
 
 const app = express();
+// Render (and most hosts) sit behind one proxy hop; trust it so req.ip is the real client.
+app.set("trust proxy", 1);
 app.use(cors({ origin }));
 app.use(express.json({ limit: "100kb" }));
 app.use(routes);

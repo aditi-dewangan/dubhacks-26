@@ -155,10 +155,8 @@ export interface PhoneAuth {
 
 // ---------- REST ----------
 
-export interface CreateSessionRequest {
-  kioskId: string;
-  token: string;
-}
+/** Either the QR link's kioskId + token, or just the kiosk's fixed code (e.g. "FD48213"). */
+export type CreateSessionRequest = { kioskId: string; token: string } | { code: string };
 
 export interface CreateSessionResponse {
   sessionId: string;
@@ -167,7 +165,7 @@ export interface CreateSessionResponse {
 }
 
 export interface ApiError {
-  error: "kiosk_busy" | "code_expired" | "kiosk_offline" | "bad_request";
+  error: "kiosk_busy" | "code_expired" | "kiosk_offline" | "bad_request" | "code_not_found" | "too_many_attempts";
   message: string;
 }
 
