@@ -1,5 +1,5 @@
 // Text the agent reads and turns into speech: prices as people say them, order lines
-// as short phrases ("1 large cheeseburger, no onions").
+// as short phrases ("1 large lemonade", "1 box combo, lemonade, no coleslaw").
 
 import { menu, type Cart, type CartLine, type KioskPopup, type KioskState } from "@kiosk-access/shared";
 
@@ -32,10 +32,10 @@ export function spokenDelta(delta: number): string {
 
 const itemsById = new Map(menu.items.map((i) => [i.id, i]));
 
-/** "1 large cheeseburger, no onions". Size goes in front; other choices follow. */
+/** "1 large lemonade", "1 box combo, lemonade, no coleslaw". Size goes in front; other choices follow. */
 export function describeLine(line: Pick<CartLine, "itemId" | "qty" | "options"> & { name?: string }): string {
   const item = itemsById.get(line.itemId);
-  let name = (line.name ?? item?.name ?? line.itemId).toLowerCase();
+  let name = (line.name ?? item?.name ?? line.itemId).toLowerCase().replace(/^the /, "");
   if (line.qty > 1 && !/[s)]$/.test(name)) name += "s";
   const front: string[] = [];
   const after: string[] = [];

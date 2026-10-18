@@ -48,7 +48,7 @@ test("SDK sends the grounded prompt, current state and customer text with no act
       assert.match(String(url), /test-model:generateContent/);
       assert.equal(new Headers(init?.headers).get("x-goog-api-key"), config.apiKey);
       const body = JSON.parse(String(init?.body));
-      assert.match(JSON.stringify(body.systemInstruction), /cheeseburger/);
+      assert.match(JSON.stringify(body.systemInstruction), /box_combo/);
       assert.match(JSON.stringify(body.contents), /What burgers do you have/);
       assert.match(JSON.stringify(body.systemInstruction), /CURRENT_KIOSK_STATE_JSON/);
       assert.equal(body.tools, undefined);

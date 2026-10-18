@@ -67,7 +67,7 @@ test("an active session can respond before the kiosk has published state", async
 });
 
 test("tool dispatch preserves session, input, and the bridge result", async () => {
-  const input = { itemId: "cheeseburger", qty: 1, options: { size: ["large"] } };
+  const input = { itemId: "box_combo", qty: 1, options: { drink: ["sweet_tea"] } };
   const result = await dispatchAgentTool(async (sessionId, name, received) => {
     assert.equal(sessionId, "a");
     assert.equal(name, "add_item");

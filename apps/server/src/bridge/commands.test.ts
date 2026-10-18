@@ -56,7 +56,7 @@ describe("sendCommand", () => {
 
   it("starts the timeout only when a queued command reaches the front", async () => {
     const t = harness();
-    const first = t.sender.sendCommand("k1", "s1", { type: "add_item", itemId: "cookie", qty: 1, options: {} });
+    const first = t.sender.sendCommand("k1", "s1", { type: "add_item", itemId: "texas_toast", qty: 1, options: {} });
     const second = t.sender.sendCommand("k1", "s1", { type: "cancel_order" });
     let secondDone = false;
     second.then(() => (secondDone = true), () => (secondDone = true));

@@ -22,7 +22,7 @@ export type Transcribe = (audio: Buffer, mimeType: string) => Promise<string>;
 let cached: Transcribe | null | undefined;
 function geminiTranscriber(): Transcribe | null {
   if (cached !== undefined) return cached;
-  // Local testing without a key: DEV_ROUTES=1 TRANSCRIBE_STUB="two cheeseburgers"
+  // Local testing without a key: DEV_ROUTES=1 TRANSCRIBE_STUB="two box combos"
   const stub = process.env.TRANSCRIBE_STUB;
   if (config.devRoutes && stub) return (cached = async () => stub);
   try {

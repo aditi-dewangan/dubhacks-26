@@ -102,7 +102,7 @@ const submits = (t: ReturnType<typeof setup>) =>
 describe("generic kiosks (clinic, cinema, transit)", () => {
   it("points food-only tools at press_button and type_text, without touching the kiosk", async () => {
     const t = setup({ kiosk: new FakeClinic() });
-    expect(await t.tool("add_item", { itemId: "cheeseburger", qty: 1 })).toBe(
+    expect(await t.tool("add_item", { itemId: "box_combo", qty: 1 })).toBe(
       "This is a clinic kiosk with no menu, so add_item doesn't apply. Call get_kiosk_state to read the screen, then use press_button and type_text.",
     );
     expect(await t.tool("get_menu")).toMatch(/^This is a clinic kiosk with no menu/);

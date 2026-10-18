@@ -2,7 +2,7 @@
 // Usage: pnpm fake-kiosk [kioskId]        then, in another terminal: pnpm fake-phone [kioskId]
 //
 // It registers through the SDK, acks every command with realistic states from menu.json
-// (including the combo popup after a burger), and taps the card itself after payment starts.
+// (including the combo popup after a chicken sandwich), and taps the card itself after payment starts.
 // Env: SERVER_URL (or VITE_SERVER_URL), KIOSK_KEY, FAKE_COMMAND_MS (delay per command, default 600).
 
 import { AccessKiosk } from "../src/index.ts";

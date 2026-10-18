@@ -42,7 +42,7 @@ function harness(script: ((input: ModelInput) => Content | Promise<Content>)[]) 
 }
 
 test("multi-turn clarification remembers choices, calls Bridge, and refreshes cart context", async () => {
-  const add = calls(request("add_item", { itemId: "cheeseburger", qty: 1, options: { size: ["large"], remove: ["no_onions"] } }));
+  const add = calls(request("add_item", { itemId: "box_combo", qty: 1, options: { drink: ["sweet_tea"], remove: ["no_coleslaw"] } }));
   const h = harness([
     () => answer("Regular or large?"),
     ({ contents }) => {
@@ -55,7 +55,7 @@ test("multi-turn clarification remembers choices, calls Bridge, and refreshes ca
       assert.deepEqual(contents[3], add);
       assert.equal(contents[4].parts?.[0].functionResponse?.id, "add_item");
       assert.match(String(contents[4].parts?.[0].functionResponse?.response?.result), /Added one/);
-      assert.equal(state?.cart.total, 8.8);
+      assert.equal(state?.cart.total, 8.25);
       assert.equal(state?.popup?.id, "popup-upsell");
       return answer("Added. Would you like the combo for two dollars more?");
     },
@@ -70,14 +70,14 @@ test("multi-turn clarification remembers choices, calls Bridge, and refreshes ca
 
 test("required size is asked before add_item reaches Bridge; a later answer is remembered", async () => {
   const h = harness([
-    () => calls(request("add_item", { itemId: "cheeseburger", qty: 1, options: { remove: ["no_onions"] } })),
+    () => calls(request("add_item", { itemId: "box_combo", qty: 1, options: { remove: ["no_coleslaw"] } })),
     ({ contents }) => {
-      assert.match(String(contents[2].parts?.[0].functionResponse?.response?.result), /Size is required/);
+      assert.match(String(contents[2].parts?.[0].functionResponse?.response?.result), /Drink is required/);
       return answer("Regular or large?");
     },
     ({ contents }) => {
       assert.equal(contents[4].parts?.[0].text, "Regular");
-      return calls(request("add_item", { itemId: "cheeseburger", qty: 1, options: { size: ["regular"], remove: ["no_onions"] } }));
+      return calls(request("add_item", { itemId: "box_combo", qty: 1, options: { drink: ["lemonade"], remove: ["no_coleslaw"] } }));
     },
     ({ contents }) => {
       assert.match(String(contents[6].parts?.[0].functionResponse?.response?.result), /Added one/);
@@ -91,11 +91,11 @@ test("required size is asked before add_item reaches Bridge; a later answer is r
 });
 
 test("two differently customized copies use separate quantity-one calls", async () => {
-  const burger = { itemId: "cheeseburger", qty: 1 };
+  const burger = { itemId: "box_combo", qty: 1 };
   const h = harness([
     () => calls(
-      request("add_item", { ...burger, options: { size: ["regular"], remove: ["no_onions"] } }, "no-onion"),
-      request("add_item", { ...burger, options: { size: ["regular"] } }, "plain"),
+      request("add_item", { ...burger, options: { drink: ["lemonade"], remove: ["no_coleslaw"] } }, "no-onion"),
+      request("add_item", { ...burger, options: { drink: ["lemonade"] } }, "plain"),
     ),
     ({ contents }) => {
       const results = contents[2].parts!.map((p) => p.functionResponse!.response!.result as string);
@@ -113,7 +113,7 @@ test("two differently customized copies use separate quantity-one calls", async 
   };
   const message = await h.agent.handleUserMessage("a", "Two cheeseburgers, one with no onions. Regular size for both.");
   assert.equal(h.executed.length, 1);
-  assert.deepEqual(h.executed[0], { name: "add_item", input: { ...burger, options: { size: ["regular"], remove: ["no_onions"] } } });
+  assert.deepEqual(h.executed[0], { name: "add_item", input: { ...burger, options: { drink: ["lemonade"], remove: ["no_coleslaw"] } } });
   assert.match(message.text, /popup/);
 });
 
@@ -144,7 +144,7 @@ test("multiple calls run sequentially and every response retains its name and ID
 test("bridge rejection reaches the model unchanged and is not treated as success", async () => {
   const rejection = "Size is required: regular or large.";
   const h = harness([
-    () => calls(request("add_item", { itemId: "water", qty: 1, options: {} })),
+    () => calls(request("add_item", { itemId: "texas_toast", qty: 1, options: {} })),
     ({ contents }) => {
       assert.equal(contents[2].parts?.[0].functionResponse?.response?.result, rejection);
       return answer("Regular or large?");
@@ -156,10 +156,10 @@ test("bridge rejection reaches the model unchanged and is not treated as success
 
 test("tool exceptions are safe context and prevent replaying uncertain mutations", async () => {
   const h = harness([
-    () => calls(request("add_item", { itemId: "water", qty: 1, options: {} })),
+    () => calls(request("add_item", { itemId: "texas_toast", qty: 1, options: {} })),
     ({ contents }) => {
       assert.match(String(contents[2].parts?.[0].functionResponse?.response?.result), /outcome may be unknown/);
-      return calls(request("get_kiosk_state"), request("add_item", { itemId: "water", qty: 1, options: {} }));
+      return calls(request("get_kiosk_state"), request("add_item", { itemId: "texas_toast", qty: 1, options: {} }));
     },
     ({ contents }) => {
       assert.match(String(contents[4].parts?.[1].functionResponse?.response?.result), /Not executed/);
@@ -225,7 +225,7 @@ test("confirmation flag comes from the Bridge snapshot rather than model wording
 
 test("failed generation after a mutation preserves the result for the next turn", async () => {
   const h = harness([
-    () => calls(request("add_item", { itemId: "water", qty: 1, options: {} })),
+    () => calls(request("add_item", { itemId: "texas_toast", qty: 1, options: {} })),
     () => { throw new GeminiError("timeout"); },
     ({ contents }) => {
       assert.ok(contents.some((c) => c.parts?.some((p) => p.functionResponse?.name === "add_item")));

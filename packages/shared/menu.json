@@ -1,105 +1,531 @@
 {
   "taxRate": 0.101,
   "categories": [
-    { "id": "burgers", "name": "Burgers" },
-    { "id": "sides", "name": "Sides" },
-    { "id": "drinks", "name": "Drinks" },
-    { "id": "desserts", "name": "Desserts" }
+    {
+      "id": "combos",
+      "name": "Combos"
+    },
+    {
+      "id": "chicken",
+      "name": "Chicken"
+    },
+    {
+      "id": "sides",
+      "name": "Sides"
+    },
+    {
+      "id": "drinks",
+      "name": "Drinks"
+    }
   ],
   "items": [
     {
-      "id": "cheeseburger", "categoryId": "burgers", "name": "Cheeseburger", "price": 6.49,
-      "description": "Beef patty, cheddar, pickles, onions, ketchup", "tags": ["beef"],
-      "optionGroups": [
-        { "id": "size", "name": "Size", "type": "single", "required": true,
-          "choices": [{ "id": "regular", "name": "Regular", "priceDelta": 0 }, { "id": "large", "name": "Large", "priceDelta": 1.5 }] },
-        { "id": "remove", "name": "Remove", "type": "multi", "required": false,
-          "choices": [{ "id": "no_onions", "name": "No onions", "priceDelta": 0 }, { "id": "no_pickles", "name": "No pickles", "priceDelta": 0 }, { "id": "no_cheese", "name": "No cheese", "priceDelta": -0.5 }] }
+      "id": "box_combo",
+      "categoryId": "combos",
+      "name": "The Box Combo",
+      "price": 13.49,
+      "description": "4 chicken fingers, crinkle-cut fries, coleslaw, Cane's sauce, Texas toast and a drink",
+      "tags": [
+        "chicken"
       ],
-      "upsell": { "text": "Make it a combo with medium fries and a drink for $2.00 more?", "itemId": "combo_upgrade", "priceDelta": 2.0 }
-    },
-    {
-      "id": "double_cheeseburger", "categoryId": "burgers", "name": "Double Cheeseburger", "price": 8.29,
-      "description": "Two beef patties, double cheddar, pickles, onions", "tags": ["beef"],
       "optionGroups": [
-        { "id": "remove", "name": "Remove", "type": "multi", "required": false,
-          "choices": [{ "id": "no_onions", "name": "No onions", "priceDelta": 0 }, { "id": "no_pickles", "name": "No pickles", "priceDelta": 0 }] }
-      ],
-      "upsell": { "text": "Make it a combo with medium fries and a drink for $2.00 more?", "itemId": "combo_upgrade", "priceDelta": 2.0 }
-    },
-    {
-      "id": "crispy_chicken_sandwich", "categoryId": "burgers", "name": "Crispy Chicken Sandwich", "price": 7.19,
-      "description": "Fried chicken breast, lettuce, mayo", "tags": ["chicken"],
-      "optionGroups": [
-        { "id": "spice", "name": "Spice level", "type": "single", "required": true,
-          "choices": [{ "id": "classic", "name": "Classic", "priceDelta": 0 }, { "id": "spicy", "name": "Spicy", "priceDelta": 0 }] }
+        {
+          "id": "drink",
+          "name": "Drink",
+          "type": "single",
+          "required": true,
+          "choices": [
+            {
+              "id": "lemonade",
+              "name": "Lemonade",
+              "priceDelta": 0
+            },
+            {
+              "id": "sweet_tea",
+              "name": "Sweet tea",
+              "priceDelta": 0
+            },
+            {
+              "id": "unsweet_tea",
+              "name": "Unsweet tea",
+              "priceDelta": 0
+            },
+            {
+              "id": "cola",
+              "name": "Cola",
+              "priceDelta": 0
+            }
+          ]
+        },
+        {
+          "id": "remove",
+          "name": "Remove",
+          "type": "multi",
+          "required": false,
+          "choices": [
+            {
+              "id": "no_coleslaw",
+              "name": "No coleslaw",
+              "priceDelta": 0
+            },
+            {
+              "id": "no_toast",
+              "name": "No Texas toast",
+              "priceDelta": 0
+            }
+          ]
+        }
       ]
     },
     {
-      "id": "veggie_burger", "categoryId": "burgers", "name": "Garden Veggie Burger", "price": 6.99,
-      "description": "Plant-based patty, lettuce, tomato, vegan mayo", "tags": ["vegetarian", "vegan"],
+      "id": "three_finger_combo",
+      "categoryId": "combos",
+      "name": "3 Finger Combo",
+      "price": 10.99,
+      "description": "3 chicken fingers, crinkle-cut fries, Cane's sauce, Texas toast and a drink",
+      "tags": [
+        "chicken"
+      ],
+      "optionGroups": [
+        {
+          "id": "drink",
+          "name": "Drink",
+          "type": "single",
+          "required": true,
+          "choices": [
+            {
+              "id": "lemonade",
+              "name": "Lemonade",
+              "priceDelta": 0
+            },
+            {
+              "id": "sweet_tea",
+              "name": "Sweet tea",
+              "priceDelta": 0
+            },
+            {
+              "id": "unsweet_tea",
+              "name": "Unsweet tea",
+              "priceDelta": 0
+            },
+            {
+              "id": "cola",
+              "name": "Cola",
+              "priceDelta": 0
+            }
+          ]
+        },
+        {
+          "id": "remove",
+          "name": "Remove",
+          "type": "multi",
+          "required": false,
+          "choices": [
+            {
+              "id": "no_toast",
+              "name": "No Texas toast",
+              "priceDelta": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "caniac_combo",
+      "categoryId": "combos",
+      "name": "The Caniac Combo",
+      "price": 16.49,
+      "description": "6 chicken fingers, crinkle-cut fries, coleslaw, 2 Cane's sauces, Texas toast and a large drink",
+      "tags": [
+        "chicken"
+      ],
+      "optionGroups": [
+        {
+          "id": "drink",
+          "name": "Drink",
+          "type": "single",
+          "required": true,
+          "choices": [
+            {
+              "id": "lemonade",
+              "name": "Lemonade",
+              "priceDelta": 0
+            },
+            {
+              "id": "sweet_tea",
+              "name": "Sweet tea",
+              "priceDelta": 0
+            },
+            {
+              "id": "unsweet_tea",
+              "name": "Unsweet tea",
+              "priceDelta": 0
+            },
+            {
+              "id": "cola",
+              "name": "Cola",
+              "priceDelta": 0
+            }
+          ]
+        },
+        {
+          "id": "remove",
+          "name": "Remove",
+          "type": "multi",
+          "required": false,
+          "choices": [
+            {
+              "id": "no_coleslaw",
+              "name": "No coleslaw",
+              "priceDelta": 0
+            },
+            {
+              "id": "no_toast",
+              "name": "No Texas toast",
+              "priceDelta": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sandwich_combo",
+      "categoryId": "combos",
+      "name": "Sandwich Combo",
+      "price": 10.99,
+      "description": "Chicken sandwich with lettuce and Cane's sauce, crinkle-cut fries and a drink",
+      "tags": [
+        "chicken"
+      ],
+      "optionGroups": [
+        {
+          "id": "drink",
+          "name": "Drink",
+          "type": "single",
+          "required": true,
+          "choices": [
+            {
+              "id": "lemonade",
+              "name": "Lemonade",
+              "priceDelta": 0
+            },
+            {
+              "id": "sweet_tea",
+              "name": "Sweet tea",
+              "priceDelta": 0
+            },
+            {
+              "id": "unsweet_tea",
+              "name": "Unsweet tea",
+              "priceDelta": 0
+            },
+            {
+              "id": "cola",
+              "name": "Cola",
+              "priceDelta": 0
+            }
+          ]
+        },
+        {
+          "id": "remove",
+          "name": "Remove",
+          "type": "multi",
+          "required": false,
+          "choices": [
+            {
+              "id": "no_lettuce",
+              "name": "No lettuce",
+              "priceDelta": 0
+            },
+            {
+              "id": "no_sauce",
+              "name": "No Cane's sauce",
+              "priceDelta": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "chicken_sandwich",
+      "categoryId": "chicken",
+      "name": "Chicken Sandwich",
+      "price": 7.49,
+      "description": "3 chicken fingers on a toasted bun with lettuce and Cane's sauce",
+      "tags": [
+        "chicken"
+      ],
+      "optionGroups": [
+        {
+          "id": "remove",
+          "name": "Remove",
+          "type": "multi",
+          "required": false,
+          "choices": [
+            {
+              "id": "no_lettuce",
+              "name": "No lettuce",
+              "priceDelta": 0
+            },
+            {
+              "id": "no_sauce",
+              "name": "No Cane's sauce",
+              "priceDelta": 0
+            }
+          ]
+        }
+      ],
+      "upsell": {
+        "text": "Make it a combo with crinkle-cut fries and a drink for $3.50 more?",
+        "itemId": "combo_upgrade",
+        "priceDelta": 3.5
+      }
+    },
+    {
+      "id": "chicken_finger",
+      "categoryId": "chicken",
+      "name": "Chicken Finger",
+      "price": 2.29,
+      "description": "One hand-battered chicken finger",
+      "tags": [
+        "chicken"
+      ],
+      "optionGroups": [],
+      "upsell": {
+        "text": "Make it a combo with crinkle-cut fries and a drink for $3.50 more?",
+        "itemId": "combo_upgrade",
+        "priceDelta": 3.5
+      }
+    },
+    {
+      "id": "tailgate",
+      "categoryId": "chicken",
+      "name": "Tailgate (25 Fingers)",
+      "price": 40.99,
+      "description": "25 chicken fingers and 8 Cane's sauces, for a group",
+      "tags": [
+        "chicken"
+      ],
       "optionGroups": []
     },
     {
-      "id": "fries", "categoryId": "sides", "name": "French Fries", "price": 2.79,
-      "description": "Salted shoestring fries", "tags": ["vegetarian", "vegan"],
+      "id": "fries",
+      "categoryId": "sides",
+      "name": "Crinkle-Cut Fries",
+      "price": 3.49,
+      "description": "Crispy golden crinkle-cut fries",
+      "tags": [
+        "vegetarian",
+        "vegan"
+      ],
+      "optionGroups": []
+    },
+    {
+      "id": "coleslaw",
+      "categoryId": "sides",
+      "name": "Coleslaw",
+      "price": 1.79,
+      "description": "Creamy coleslaw",
+      "tags": [
+        "vegetarian"
+      ],
+      "optionGroups": []
+    },
+    {
+      "id": "texas_toast",
+      "categoryId": "sides",
+      "name": "Texas Toast",
+      "price": 1.29,
+      "description": "Buttery grilled Texas toast",
+      "tags": [
+        "vegetarian"
+      ],
+      "optionGroups": []
+    },
+    {
+      "id": "canes_sauce",
+      "categoryId": "sides",
+      "name": "Cane's Sauce",
+      "price": 0.5,
+      "description": "The one and only",
+      "tags": [
+        "vegetarian"
+      ],
+      "optionGroups": []
+    },
+    {
+      "id": "lemonade",
+      "categoryId": "drinks",
+      "name": "Fresh Lemonade",
+      "price": 2.49,
+      "description": "Fresh-squeezed lemonade",
+      "tags": [
+        "vegan"
+      ],
       "optionGroups": [
-        { "id": "size", "name": "Size", "type": "single", "required": true,
-          "choices": [{ "id": "small", "name": "Small", "priceDelta": 0 }, { "id": "medium", "name": "Medium", "priceDelta": 0.7 }, { "id": "large", "name": "Large", "priceDelta": 1.3 }] }
+        {
+          "id": "size",
+          "name": "Size",
+          "type": "single",
+          "required": true,
+          "choices": [
+            {
+              "id": "regular",
+              "name": "Regular",
+              "priceDelta": 0
+            },
+            {
+              "id": "large",
+              "name": "Large",
+              "priceDelta": 1.0
+            }
+          ]
+        }
       ]
     },
     {
-      "id": "onion_rings", "categoryId": "sides", "name": "Onion Rings", "price": 3.49,
-      "description": "Beer-battered onion rings", "tags": ["vegetarian"], "optionGroups": []
-    },
-    {
-      "id": "nuggets", "categoryId": "sides", "name": "Chicken Nuggets (6 pc)", "price": 4.29,
-      "description": "Six nuggets with a dipping sauce", "tags": ["chicken"],
+      "id": "sweet_tea",
+      "categoryId": "drinks",
+      "name": "Sweet Tea",
+      "price": 2.19,
+      "description": "Fresh-brewed sweet tea, or unsweet",
+      "tags": [
+        "vegan"
+      ],
       "optionGroups": [
-        { "id": "sauce", "name": "Sauce", "type": "single", "required": true,
-          "choices": [{ "id": "bbq", "name": "BBQ", "priceDelta": 0 }, { "id": "honey_mustard", "name": "Honey mustard", "priceDelta": 0 }, { "id": "ranch", "name": "Ranch", "priceDelta": 0 }] }
+        {
+          "id": "sweet",
+          "name": "Sweetness",
+          "type": "single",
+          "required": true,
+          "choices": [
+            {
+              "id": "sweetened",
+              "name": "Sweetened",
+              "priceDelta": 0
+            },
+            {
+              "id": "unsweetened",
+              "name": "Unsweetened",
+              "priceDelta": 0
+            }
+          ]
+        },
+        {
+          "id": "size",
+          "name": "Size",
+          "type": "single",
+          "required": true,
+          "choices": [
+            {
+              "id": "regular",
+              "name": "Regular",
+              "priceDelta": 0
+            },
+            {
+              "id": "large",
+              "name": "Large",
+              "priceDelta": 0.8
+            }
+          ]
+        }
       ]
     },
     {
-      "id": "soda", "categoryId": "drinks", "name": "Fountain Soda", "price": 1.99,
-      "description": "Cola, diet cola, lemon-lime or root beer", "tags": ["vegan"],
+      "id": "fountain_drink",
+      "categoryId": "drinks",
+      "name": "Fountain Drink",
+      "price": 2.19,
+      "description": "Cola, diet cola, lemon-lime or root beer",
+      "tags": [
+        "vegan"
+      ],
       "optionGroups": [
-        { "id": "flavor", "name": "Flavor", "type": "single", "required": true,
-          "choices": [{ "id": "cola", "name": "Cola", "priceDelta": 0 }, { "id": "diet_cola", "name": "Diet cola", "priceDelta": 0 }, { "id": "lemon_lime", "name": "Lemon-lime", "priceDelta": 0 }, { "id": "root_beer", "name": "Root beer", "priceDelta": 0 }] },
-        { "id": "size", "name": "Size", "type": "single", "required": true,
-          "choices": [{ "id": "small", "name": "Small", "priceDelta": 0 }, { "id": "medium", "name": "Medium", "priceDelta": 0.5 }, { "id": "large", "name": "Large", "priceDelta": 0.9 }] }
+        {
+          "id": "flavor",
+          "name": "Flavor",
+          "type": "single",
+          "required": true,
+          "choices": [
+            {
+              "id": "cola",
+              "name": "Cola",
+              "priceDelta": 0
+            },
+            {
+              "id": "diet_cola",
+              "name": "Diet cola",
+              "priceDelta": 0
+            },
+            {
+              "id": "lemon_lime",
+              "name": "Lemon-lime",
+              "priceDelta": 0
+            },
+            {
+              "id": "root_beer",
+              "name": "Root beer",
+              "priceDelta": 0
+            }
+          ]
+        },
+        {
+          "id": "size",
+          "name": "Size",
+          "type": "single",
+          "required": true,
+          "choices": [
+            {
+              "id": "regular",
+              "name": "Regular",
+              "priceDelta": 0
+            },
+            {
+              "id": "large",
+              "name": "Large",
+              "priceDelta": 0.8
+            }
+          ]
+        }
       ]
     },
     {
-      "id": "iced_tea", "categoryId": "drinks", "name": "Iced Tea", "price": 2.19,
-      "description": "Fresh-brewed, sweetened or unsweetened", "tags": ["vegan"],
+      "id": "combo_upgrade",
+      "categoryId": "sides",
+      "name": "Combo upgrade (fries + drink)",
+      "price": 3.5,
+      "description": "Crinkle-cut fries and a drink, added through the combo popup after a sandwich or chicken finger",
+      "tags": [],
+      "hidden": true,
       "optionGroups": [
-        { "id": "sweet", "name": "Sweetness", "type": "single", "required": true,
-          "choices": [{ "id": "sweetened", "name": "Sweetened", "priceDelta": 0 }, { "id": "unsweetened", "name": "Unsweetened", "priceDelta": 0 }] }
-      ]
-    },
-    {
-      "id": "water", "categoryId": "drinks", "name": "Bottled Water", "price": 1.49,
-      "description": "16.9 oz bottle", "tags": ["vegan"], "optionGroups": []
-    },
-    {
-      "id": "vanilla_shake", "categoryId": "desserts", "name": "Vanilla Shake", "price": 3.99,
-      "description": "Soft-serve vanilla shake", "tags": ["vegetarian"],
-      "optionGroups": [
-        { "id": "size", "name": "Size", "type": "single", "required": true,
-          "choices": [{ "id": "small", "name": "Small", "priceDelta": 0 }, { "id": "large", "name": "Large", "priceDelta": 1.0 }] }
-      ]
-    },
-    {
-      "id": "cookie", "categoryId": "desserts", "name": "Chocolate Chip Cookie", "price": 1.29,
-      "description": "Baked fresh daily", "tags": ["vegetarian"], "optionGroups": []
-    },
-    {
-      "id": "combo_upgrade", "categoryId": "sides", "name": "Combo upgrade (medium fries + drink)", "price": 2.0,
-      "description": "Medium fries and a drink, added through the combo popup after a burger", "tags": [], "hidden": true,
-      "optionGroups": [
-        { "id": "drink", "name": "Combo drink", "type": "single", "required": true,
-          "choices": [{ "id": "cola", "name": "Cola", "priceDelta": 0 }, { "id": "diet_cola", "name": "Diet cola", "priceDelta": 0 }, { "id": "lemon_lime", "name": "Lemon-lime", "priceDelta": 0 }, { "id": "iced_tea", "name": "Iced tea", "priceDelta": 0 }] }
+        {
+          "id": "drink",
+          "name": "Combo drink",
+          "type": "single",
+          "required": true,
+          "choices": [
+            {
+              "id": "lemonade",
+              "name": "Lemonade",
+              "priceDelta": 0
+            },
+            {
+              "id": "sweet_tea",
+              "name": "Sweet tea",
+              "priceDelta": 0
+            },
+            {
+              "id": "unsweet_tea",
+              "name": "Unsweet tea",
+              "priceDelta": 0
+            },
+            {
+              "id": "cola",
+              "name": "Cola",
+              "priceDelta": 0
+            }
+          ]
+        }
       ]
     }
   ]
