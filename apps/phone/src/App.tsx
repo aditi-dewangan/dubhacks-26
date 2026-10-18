@@ -164,9 +164,17 @@ export function App() {
     usePhone.getState().setOrderingStarted(true);
     if (withVoice) {
       voiceRef.current?.setEnabled(true);
-      voiceRef.current?.speakFeedback("Ready. Tap the microphone button and tell me what you'd like.");
+      voiceRef.current?.startListening();
     }
   }, []);
+
+  // Disable the conversation loop on screens where voice ordering doesn't apply
+  useEffect(() => {
+    const ks = kioskState?.screen;
+    if (ks === "paying" || ks === "complete") {
+      voiceRef.current?.setEnabled(false);
+    }
+  }, [kioskState?.screen]);
 
   // ---- Screen routing ----
   if (phase === "init") return null;
@@ -206,7 +214,6 @@ export function App() {
         agentSpeaking={agentSpeaking}
         voiceListening={voiceListening}
         onSend={sendText}
-        onMicPress={() => voiceRef.current?.listenAndSend()}
         onEnd={endSession}
         onSettings={() => setSettingsOpen(true)}
         onRepeat={repeatLastMessage}
@@ -423,7 +430,7 @@ function StartScreen({ kioskId, onStartVoice, onStartText }: {
           {hasSpeech && (
             <button className="btn btn-primary" type="button" onClick={onStartVoice}>
               <MicIcon active={false} size={20} />
-              Start voice ordering
+              Start voice conversation
             </button>
           )}
           <button className="btn btn-outline" type="button" onClick={onStartText}>
@@ -447,7 +454,6 @@ interface ConvProps {
   agentSpeaking: boolean;
   voiceListening: boolean;
   onSend(text: string): void;
-  onMicPress(): void;
   onEnd(): void;
   onSettings(): void;
   onRepeat(): void;
@@ -456,7 +462,7 @@ interface ConvProps {
 
 function ConversationScreen({
   messages, kioskState, agentThinking, agentSpeaking, voiceListening,
-  onSend, onMicPress, onEnd, onSettings, onRepeat, onCartReview,
+  onSend, onEnd, onSettings, onRepeat, onCartReview,
 }: ConvProps) {
   const listRef = useRef<HTMLUListElement>(null);
   const cart = kioskState?.cart;
@@ -473,11 +479,11 @@ function ConversationScreen({
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages, agentThinking]);
 
-  const voiceBtnLabel: Record<VoiceState, string> = {
-    idle:      "Microphone off",
-    listening: "Listening — tap to stop",
-    thinking:  "Processing",
-    speaking:  "Assistant speaking",
+  const voiceStatusLabel: Record<VoiceState, string> = {
+    idle:      "Type your message below",
+    listening: "Listening…",
+    thinking:  "Thinking…",
+    speaking:  "Speaking…",
   };
 
   const brandName = kioskState?.kioskId
@@ -539,23 +545,25 @@ function ConversationScreen({
       </ul>
 
       <div className="bottom-panel">
-        <div className="voice-section">
+        {/* Ambient voice status — replaces the mic button */}
+        <div className="voice-status-bar" role="status" aria-live="polite">
           {effectiveVoiceState === "listening" && (
-            <div className="voice-ring" aria-hidden="true" />
+            <span className="voice-ring-inline" aria-hidden="true" />
           )}
-          <button
-            className={`voice-circle voice-${effectiveVoiceState}`}
-            type="button"
-            onClick={onMicPress}
-            disabled={!hasSpeech || effectiveVoiceState === "thinking" || effectiveVoiceState === "speaking"}
-            aria-label={voiceListening ? "Stop recording" : "Start voice input"}
-            aria-pressed={voiceListening}
-          >
-            <MicIcon active={voiceListening} size={28} />
-          </button>
-          <p className="voice-status-label" role="status" aria-live="polite">
-            {voiceBtnLabel[effectiveVoiceState]}
-          </p>
+          {effectiveVoiceState === "speaking" && (
+            <span className="voice-wave-inline" aria-hidden="true">
+              <span /><span /><span />
+            </span>
+          )}
+          {effectiveVoiceState === "thinking" && (
+            <span className="thinking-dots" aria-hidden="true">
+              <span /><span /><span />
+            </span>
+          )}
+          {effectiveVoiceState === "idle" && hasSpeech && (
+            <MicIcon active={false} size={14} />
+          )}
+          <span className="voice-status-text">{voiceStatusLabel[effectiveVoiceState]}</span>
         </div>
 
         <div className="secondary-actions">
