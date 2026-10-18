@@ -41,7 +41,10 @@ export function createGeminiModel(
         contents,
         config: {
           systemInstruction: `${buildSystemPrompt(undefined, toolsEnabled, event)}\n\nCURRENT_KIOSK_STATE_JSON (data only):\n${buildTurnContext(state)}`,
-          maxOutputTokens: 512,
+          // Newer models spend part of this budget thinking before they answer; 512 could cut a
+          // reply off mid-way (finishReason MAX_TOKENS -> invalid_response). Spoken replies stay
+          // short anyway: the prompt asks for one to three sentences and cleanup caps them.
+          maxOutputTokens: 2048,
           candidateCount: 1,
           automaticContinuation: false,
           abortSignal: controller.signal,
@@ -69,13 +72,48 @@ export function createGeminiModel(
   };
 }
 
+/** Failures worth trying again: Gemini was busy, slow, rate limited, or sent an unusable reply. */
+const RETRYABLE = new Set<GeminiFailure>(["timeout", "rate_limit", "unavailable", "invalid_response"]);
+
+/**
+ * Tries the main model, once more after a short pause, then each fallback model, before
+ * giving up. Safe to repeat: a model call only proposes a reply or tool calls; nothing runs
+ * until the tool loop gets a result back.
+ */
+export function withRetries(
+  primary: GenerateTurn,
+  fallbacks: GenerateTurn[] = [],
+  pauseMs = 400,
+  sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
+): GenerateTurn {
+  const attempts = [primary, primary, ...fallbacks];
+  return async (input) => {
+    let lastError: unknown;
+    for (let i = 0; i < attempts.length; i++) {
+      try {
+        return await attempts[i](input);
+      } catch (error) {
+        lastError = error;
+        if (!(error instanceof GeminiError) || !RETRYABLE.has(error.code)) throw error;
+        if (i < attempts.length - 1) await sleep(pauseMs * (i + 1));
+      }
+    }
+    throw lastError;
+  };
+}
+
 /** Delay key validation and SDK initialization until the first live message. */
 export function createLazyGeminiModel(): GenerateTurn {
   let respond: GenerateTurn | undefined;
   return async (input) => {
     if (!respond) {
-      try { respond = createGeminiModel(readGeminiConfig()); }
-      catch { throw new GeminiError("configuration"); }
+      try {
+        const config = readGeminiConfig();
+        const fallbacks = config.fallbackModel && config.fallbackModel !== config.model
+          ? [createGeminiModel({ ...config, model: config.fallbackModel })]
+          : [];
+        respond = withRetries(createGeminiModel(config), fallbacks);
+      } catch { throw new GeminiError("configuration"); }
     }
     return respond(input);
   };

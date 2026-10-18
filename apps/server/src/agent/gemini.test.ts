@@ -52,7 +52,7 @@ test("SDK sends the grounded prompt, current state and customer text with no act
       assert.match(JSON.stringify(body.contents), /What burgers do you have/);
       assert.match(JSON.stringify(body.systemInstruction), /CURRENT_KIOSK_STATE_JSON/);
       assert.equal(body.tools, undefined);
-      assert.equal(body.generationConfig.maxOutputTokens, 512);
+      assert.equal(body.generationConfig.maxOutputTokens, 2048);
       return new Response(JSON.stringify(response()), { status: 200, headers: { "content-type": "application/json" } });
     } },
   });

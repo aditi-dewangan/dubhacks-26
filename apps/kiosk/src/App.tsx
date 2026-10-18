@@ -21,6 +21,7 @@ import {
 } from "./Screens.tsx";
 import { useKiosk } from "./store.ts";
 import { AccessCard } from "./ui.tsx";
+import { afterPaint } from "./taps.ts";
 
 const END_REASONS: Record<SessionEndReason, string> = {
   idle_timeout: "Accessible session ended after inactivity",
@@ -82,7 +83,7 @@ export function App() {
     const publish = () => {
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => {
-        requestAnimationFrame(() => access.publishState(generic ? readScreen(generic, sessionActive) : currentState()));
+        afterPaint(() => access.publishState(generic ? readScreen(generic, sessionActive) : currentState()));
       }, 100);
     };
     publish();
