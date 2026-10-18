@@ -55,7 +55,7 @@ The module is typechecked by root `pnpm typecheck` and its lifecycle is covered 
 server's `pnpm test:agent` using fake browser APIs. Real microphone/voice behavior has
 not been tested here. After Frontend wiring, use HTTPS and check both demo phones:
 
-1. Tap the microphone and allow access. Say “one large cheeseburger, no onions.”
+1. Tap the microphone and allow access. Say “a Box Combo with lemonade, no coleslaw.”
    Verify one final transcript and one `user:message`.
 2. Deny permission and confirm that the status explains how to use text instead.
 3. Start listening during a spoken reply; the old reply must stop without transcribing itself.

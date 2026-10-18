@@ -22,7 +22,7 @@ export interface Line {
   itemId: string;
   qty: number;
   options: Options;
-  /** A combo upgrade belongs to the burger it was added for. */
+  /** A combo upgrade belongs to the item it was added for. */
   parentLineId?: string;
 }
 
@@ -275,7 +275,7 @@ export function cartTotals(lines: Line[]) {
 }
 
 const TITLES: Record<Screen, string> = {
-  welcome: "Welcome to Harbor Burger",
+  welcome: "Welcome to Raising Cane's",
   menu: "Menu",
   item: "Item",
   cart: "Your order",

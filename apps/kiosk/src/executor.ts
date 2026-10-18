@@ -84,7 +84,7 @@ async function goToCart() {
 async function addItem(itemId: string, qty: number, options: Options = {}) {
   const item = getItem(itemId);
   if (!item) throw new KioskError(`There's no menu item "${itemId}".`);
-  if (item.hidden) throw new KioskError("A combo is added by answering the combo popup after adding a burger.");
+  if (item.hidden) throw new KioskError("A combo is added by answering the combo popup after adding a chicken sandwich or chicken finger.");
   checkQty(qty);
   validateOptions(item, options, true);
 

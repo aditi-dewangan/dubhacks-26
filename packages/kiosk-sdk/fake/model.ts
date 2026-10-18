@@ -75,7 +75,7 @@ export class FakeKiosk {
     let title = "Menu";
     switch (this.screen) {
       case "welcome":
-        title = "Welcome to Harbor Burger";
+        title = "Welcome to Raising Cane's";
         btn("btn-start", "Start order");
         break;
       case "menu":
@@ -172,7 +172,7 @@ export class FakeKiosk {
   private addItem(itemId: string, qty: number, options: Options = {}) {
     const item = itemsById.get(itemId);
     if (!item) throw new KioskError(`There's no menu item "${itemId}".`);
-    if (item.hidden) throw new KioskError("A combo is added by answering the combo popup after adding a burger.");
+    if (item.hidden) throw new KioskError("A combo is added by answering the combo popup after adding a chicken sandwich or chicken finger.");
     checkQty(qty);
     validateOptions(item, options, true);
 

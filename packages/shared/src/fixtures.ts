@@ -16,14 +16,15 @@ export const welcomeState: KioskState = {
 export const menuState: KioskState = {
   kioskId: "store42-kiosk1",
   screen: "menu",
-  title: "Burgers",
+  title: "Chicken",
   buttons: [
-    { id: "cat-burgers", label: "Burgers", enabled: true },
+    { id: "cat-combos", label: "Combos", enabled: true },
+    { id: "cat-chicken", label: "Chicken", enabled: true },
     { id: "cat-sides", label: "Sides", enabled: true },
     { id: "cat-drinks", label: "Drinks", enabled: true },
     { id: "cat-desserts", label: "Desserts", enabled: true },
-    { id: "item-cheeseburger", label: "Cheeseburger $6.49", enabled: true },
-    { id: "item-double_cheeseburger", label: "Double Cheeseburger $8.29", enabled: true },
+    { id: "item-chicken_sandwich", label: "Chicken Sandwich $7.49", enabled: true },
+    { id: "item-chicken_finger", label: "Chicken Finger $2.29", enabled: true },
     { id: "btn-cart", label: "View order", enabled: false },
   ],
   cart: emptyCart,
@@ -33,7 +34,7 @@ export const menuState: KioskState = {
 export const upsellState: KioskState = {
   kioskId: "store42-kiosk1",
   screen: "item",
-  title: "Cheeseburger",
+  title: "Chicken Sandwich",
   buttons: [],
   popup: {
     id: "popup-upsell",
@@ -45,10 +46,10 @@ export const upsellState: KioskState = {
   },
   cart: {
     lines: [
-      { lineId: "L1", itemId: "cheeseburger", name: "Cheeseburger", qty: 1,
-        options: { size: ["large"], remove: ["no_onions"] }, lineTotal: 7.99 },
+      { lineId: "L1", itemId: "chicken_sandwich", name: "Chicken Sandwich", qty: 1,
+        options: { remove: ["no_lettuce"] }, lineTotal: 7.49 },
     ],
-    subtotal: 7.99, tax: 0.81, total: 8.8,
+    subtotal: 7.49, tax: 0.76, total: 8.25,
   },
   sessionActive: true,
 };

@@ -6,7 +6,7 @@ import { createGeminiResponder, GeminiError } from "../src/agent/gemini.ts";
 
 try {
   const config = readGeminiConfig();
-  const question = process.argv.slice(2).join(" ") || "What burgers do you have?";
+  const question = process.argv.slice(2).join(" ") || "What combos do you have?";
   const started = performance.now();
   const text = await createGeminiResponder(config)({ text: question, state: fixtures.menuState });
   console.log(`Model: ${config.model}`);

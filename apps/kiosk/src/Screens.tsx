@@ -191,7 +191,7 @@ export function CartScreen() {
     <section className="page-layout">
       <div className="page-main">
         <h2 className="section-title">Your order</h2>
-        <p className="section-sub">{lines.length} {lines.length === 1 ? "item" : "items"} · Harbor Burger</p>
+        <p className="section-sub">{lines.length} {lines.length === 1 ? "item" : "items"} · Raising Cane&apos;s</p>
         <ul className="order-lines">
           {totals.lines.map((l) => (
             <li key={l.lineId} className={l.parentLineId ? "child" : ""}>

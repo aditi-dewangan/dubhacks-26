@@ -9,7 +9,7 @@ import { cleanPreferences, type Profile, type ProfileStore, type SavedOrder } fr
 export interface ProfileRouteDeps {
   store: ProfileStore;
   getSession(sessionId: string): { sessionSecret: string; ended: boolean; kioskId: string } | undefined;
-  /** "a double cheeseburger and a large vanilla shake" */
+  /** "a box combo, lemonade and a large lemonade" */
   describeOrder?(order: SavedOrder): string;
 }
 

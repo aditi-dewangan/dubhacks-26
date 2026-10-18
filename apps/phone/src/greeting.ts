@@ -3,7 +3,7 @@ import type { PhoneProfile } from "./connection.ts";
 
 const list = (xs: string[]) => (xs.length > 1 ? `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}` : xs.join(""));
 
-const PLACES = { food: "Harbor Burger", clinic: "Evergreen Family Clinic", cinema: "Starlight Cinemas", transit: "MetroLink" } as const;
+const PLACES = { food: "Raising Cane's", clinic: "Evergreen Family Clinic", cinema: "Starlight Cinemas", transit: "MetroLink" } as const;
 
 /** The name of the place this kiosk belongs to. */
 export const placeName = (state: KioskState | null) => PLACES[state?.kind ?? "food"];
@@ -33,6 +33,6 @@ export function greeting(state: KioskState | null, profile?: PhoneProfile | null
     case "transit":
       return "Welcome to MetroLink. I can help you buy a ticket. Where are you going today?";
     default:
-      return `Welcome to Harbor Burger. We have ${list(menu.categories.map((c) => c.name.toLowerCase()))}. What would you like to have today?`;
+      return `Welcome to Raising Cane's. We have ${list(menu.categories.map((c) => c.name.toLowerCase()))}. What would you like to have today?`;
   }
 }

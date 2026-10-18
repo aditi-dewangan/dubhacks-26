@@ -23,7 +23,7 @@ const persistence = process.env.DATABASE_URL
 const store = createProfileStore({ persistence });
 await store.load();
 
-/** "a double cheeseburger and 1 large vanilla shake" */
+/** "a box combo, lemonade and a large lemonade" */
 export function describeOrder(order: SavedOrder): string {
   // "1 large vanilla shake" reads better aloud as "a large vanilla shake".
   const parts = order.lines.map((l) => describeLine(l).replace(/^1 (?=[aeiou])/i, "an ").replace(/^1 /, "a "));

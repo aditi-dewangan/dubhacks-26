@@ -8,8 +8,8 @@ import { readHistory } from "./history.ts";
 
 test("checkout readback retains exact pending total and item customizations", () => {
   const text = checkoutReadback(fixtures.upsellState.cart);
-  assert.match(text, /1 Cheeseburger, Large, No onions/);
-  assert.match(text, /8 dollars and 80 cents/);
+  assert.match(text, /1 Chicken Sandwich, No lettuce/);
+  assert.match(text, /8 dollars and 25 cents/);
   assert.match(text, /confirm/);
   assert.ok(text.length <= 300);
 });
@@ -42,7 +42,7 @@ test("checkout reads the snapshot without another model call and blocks later ba
   const reply = await agent.handleUserMessage("s", "That's it");
   assert.equal(rounds, 1);
   assert.equal(reply.awaitingConfirmation, true);
-  assert.match(reply.text, /8 dollars and 80 cents/);
+  assert.match(reply.text, /8 dollars and 25 cents/);
   assert.deepEqual(bridge.calls.map((c) => c.name), ["request_checkout"]);
   assert.equal(bridge.state.cart.lines.length, 1);
   assert.match(JSON.stringify(readHistory(bridge.session.history)), /checkout review is now pending/);
