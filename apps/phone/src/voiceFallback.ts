@@ -11,6 +11,8 @@ const MAX_MS = 15_000;           // longest single answer
 const NO_SPEECH_MS = 8_000;      // give up if nobody talks
 const END_SILENCE_MS = 1_200;    // this much quiet after talking = done
 const MIN_THRESHOLD = 0.012;     // RMS level that counts as speech in a quiet room
+const STALL_MS = 2_000;          // no audio frames by now = audio processing is blocked (iPhone, no tap yet)
+const PLAIN_RECORD_MS = 6_000;   // fixed-length answer when we can't detect the pause
 
 type AudioCtx = typeof AudioContext;
 const AudioContextImpl: AudioCtx | undefined =
@@ -68,9 +70,13 @@ function recordUtterance(isCancelled: () => boolean, onCancel: (fn: () => void) 
     let processor: ScriptProcessorNode | null = null;
     let source: MediaStreamAudioSourceNode | null = null;
     let done = false;
+    let watchdog = 0;
+    let plain: { stop(): void } | null = null;
     const chunks: Float32Array[] = [];
 
     const cleanup = () => {
+      window.clearInterval(watchdog);
+      plain?.stop();
       try { processor?.disconnect(); source?.disconnect(); } catch { /* already gone */ }
       if (processor) processor.onaudioprocess = null;
       // The stream stays open for the next answer; releaseMic() turns it off at the end.
@@ -128,8 +134,56 @@ function recordUtterance(isCancelled: () => boolean, onCancel: (fn: () => void) 
       };
       source.connect(processor);
       processor.connect(ctx.destination); // Chrome only runs the processor when it's connected
+
+      // A wall clock, not audio frames, decides when to give up, so listening can never hang.
+      // iPhones can keep audio processing paused until the first tap: then record a fixed-length
+      // clip with MediaRecorder instead (it works without a tap) and decode it afterwards.
+      watchdog = window.setInterval(() => {
+        if (done) return;
+        const elapsed = performance.now() - started;
+        if (frames === 0 && elapsed > STALL_MS && !plain) {
+          try { processor!.onaudioprocess = null; processor!.disconnect(); source!.disconnect(); } catch { /* ok */ }
+          plain = recordPlain(stream!, PLAIN_RECORD_MS, (result) => {
+            if (done) return;
+            if (result instanceof SpeechError) { finish(result); return; }
+            done = true;
+            window.clearInterval(watchdog);
+            resolve(result);
+          });
+          return;
+        }
+        if (!plain && elapsed > MAX_MS + 1_000) finish(heardSpeech ? undefined : new SpeechError("no_speech"));
+      }, 250);
     })();
   });
+}
+
+/** Record `ms` of audio with MediaRecorder, then decode to 16 kHz samples (no running AudioContext needed). */
+function recordPlain(stream: MediaStream, ms: number, done: (result: Float32Array | SpeechError) => void): { stop(): void } {
+  if (typeof MediaRecorder === "undefined" || !ctx) { done(new SpeechError("audio_unavailable")); return { stop() {} }; }
+  let recorder: MediaRecorder;
+  try { recorder = new MediaRecorder(stream); } catch { done(new SpeechError("audio_unavailable")); return { stop() {} }; }
+  const parts: Blob[] = [];
+  let cancelled = false;
+  recorder.ondataavailable = (e) => { if (e.data.size) parts.push(e.data); };
+  recorder.onstop = async () => {
+    if (cancelled) return;
+    try {
+      const audio = await ctx!.decodeAudioData(await new Blob(parts, { type: recorder.mimeType }).arrayBuffer());
+      done(downsample([audio.getChannelData(0)], audio.sampleRate));
+    } catch {
+      done(new SpeechError("failed"));
+    }
+  };
+  recorder.start();
+  const timer = window.setTimeout(() => { if (recorder.state !== "inactive") recorder.stop(); }, ms);
+  return {
+    stop() {
+      cancelled = true;
+      window.clearTimeout(timer);
+      if (recorder.state !== "inactive") recorder.stop();
+    },
+  };
 }
 
 /** Average down to 16 kHz mono. */
