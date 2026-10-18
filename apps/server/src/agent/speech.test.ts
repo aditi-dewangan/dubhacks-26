@@ -218,3 +218,17 @@ test("speech the phone won't start is reported as blocked; a touch replays it, o
   voice.replaySilent("Last message"); // nothing waiting: says the fallback
   assert.equal((h.spoken.at(-1) as unknown as FakeUtterance).text, "Last message");
 });
+test("Safari's 'not-allowed' before the first touch counts as blocked, so the Tap to hear button shows", async () => {
+  type FakeUtterance = { text: string; onstart?: () => void; onend?: () => void; onerror?: (event: { error: string }) => void };
+  const h = fixture();
+  const blocked: boolean[] = [];
+  const voice = createAgentVoice({ sendText: () => {}, showTranscript: () => {}, showStatus: () => assert.fail("no error message for a blocked greeting"),
+    speechBlocked: (value) => { blocked.push(value); } }, () => 1, h.controller);
+  voice.setEnabled(true, { handsFree: false });
+  const greeting = voice.greet("Welcome", { auto: true });
+  (h.spoken[0] as unknown as FakeUtterance).onerror?.({ error: "not-allowed" });
+  await greeting;
+  assert.deepEqual(blocked, [true]);
+  voice.replaySilent(); // the touch
+  assert.equal((h.spoken.at(-1) as unknown as FakeUtterance).text, "Welcome");
+});
