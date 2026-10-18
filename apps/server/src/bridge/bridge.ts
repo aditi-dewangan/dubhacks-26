@@ -298,8 +298,8 @@ export function createBridge(deps: BridgeDeps) {
       const ack = await run(session.sessionId, { type: "remove_item", lineId: line.value.lineId });
       if (!ack.ok) return `The kiosk couldn't remove it: ${ack.error}`;
       const gone = state.cart.lines.filter((l) => !ack.state.cart.lines.some((n) => n.lineId === l.lineId));
-      const alsoCombo = gone.some((l) => l.lineId !== line.value.lineId) ? " and its combo" : "";
-      return `Removed ${describeLine(line.value)}${alsoCombo}. ${cartTotalSentence(ack.state.cart)}`;
+      const alsoExtras = gone.some((l) => l.lineId !== line.value.lineId) ? " and what came with it" : "";
+      return `Removed ${describeLine(line.value)}${alsoExtras}. ${cartTotalSentence(ack.state.cart)}`;
     },
 
     async respond_to_popup(session, state, input) {

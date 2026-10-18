@@ -1,4 +1,4 @@
-// Starlight Cinemas: movie ticket kiosk (all titles are made up).
+// AMC Theaters: movie ticket kiosk (all titles are made up).
 // welcome → movies (pick a showtime) → tickets → seats → review → paying → complete
 
 import { create } from "zustand";
@@ -6,6 +6,7 @@ import type { ConnectionStatus } from "@kiosk-access/sdk";
 import type { Cart } from "@kiosk-access/shared";
 import { EMPTY_CART, type GenericKiosk } from "../generic.ts";
 import { brand } from "../kinds.ts";
+import imgAmcLogo from "../assets/logos/amc.png";
 import { ids, money, round2 } from "../model.ts";
 import { AccessCard, CardReaderScreen } from "../ui.tsx";
 
@@ -122,7 +123,6 @@ function Body({ qrUrl, status }: { qrUrl: string | null; status: ConnectionStatu
             <button className="btn-red start-btn" type="button" data-kiosk-id="btn-start" onClick={() => s.go("movies")}>
               Buy tickets
             </button>
-            <div className="hero-foods" aria-hidden="true">🎬 🍿 🎟️</div>
           </div>
           <AccessCard qrUrl={qrUrl} status={status} task={brand.task} />
         </section>
