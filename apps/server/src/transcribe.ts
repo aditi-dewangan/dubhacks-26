@@ -20,24 +20,58 @@ const PROMPT =
 export type Transcribe = (audio: Buffer, mimeType: string) => Promise<string>;
 
 let cached: Transcribe | null | undefined;
+
+/** What happened last time, for GET /api/transcribe/status (never includes audio, text or keys). */
+const status = {
+  configured: false,
+  models: [] as string[],
+  lastOk: null as string | null,
+  lastError: null as null | { at: string; model: string; reason: string },
+};
+const redact = (text: string) => text.replace(/key=[^&\s"]+/gi, "key=…").replace(/AIza[0-9A-Za-z_-]{20,}/g, "…").slice(0, 300);
+function recordError(model: string, error: unknown) {
+  const e = error as { status?: number; message?: string };
+  const reason = redact(`${e?.status ?? ""} ${e?.message ?? String(error)}`.trim());
+  status.lastError = { at: new Date().toISOString(), model, reason };
+  console.warn(`[transcribe] ${model} failed: ${reason}`);
+}
+
 function geminiTranscriber(): Transcribe | null {
   if (cached !== undefined) return cached;
-  // Local testing without a key: DEV_ROUTES=1 TRANSCRIBE_STUB="two box combos"
+  // Local testing without a key: DEV_ROUTES=1 TRANSCRIBE_STUB="two cheeseburgers"
   const stub = process.env.TRANSCRIBE_STUB;
-  if (config.devRoutes && stub) return (cached = async () => stub);
+  if (config.devRoutes && stub) { status.configured = true; status.models = ["stub"]; return (cached = async () => stub); }
   try {
-    const { apiKey, model } = readGeminiConfig();
+    const { apiKey, model, fallbackModel } = readGeminiConfig();
     const client = new GoogleGenAI({ apiKey, vertexai: false });
+    const models = fallbackModel && fallbackModel !== model ? [model, fallbackModel] : [model];
+    status.configured = true;
+    status.models = models;
     cached = async (audio, mimeType) => {
-      const response = await client.models.generateContent({
-        model,
-        contents: [{ role: "user", parts: [{ inlineData: { mimeType, data: audio.toString("base64") } }, { text: PROMPT }] }],
-        config: { maxOutputTokens: 1024, temperature: 0, httpOptions: { timeout: TIMEOUT_MS, retryOptions: { attempts: 1 } } },
-      });
-      return response.text ?? "";
+      let lastError: unknown;
+      // Try the main model, then the fallback model if it fails.
+      for (const m of models) {
+        try {
+          const response = await client.models.generateContent({
+            model: m,
+            contents: [{ role: "user", parts: [{ inlineData: { mimeType, data: audio.toString("base64") } }, { text: PROMPT }] }],
+            config: { maxOutputTokens: 2048, temperature: 0, httpOptions: { timeout: TIMEOUT_MS, retryOptions: { attempts: 1 } } },
+          });
+          const text = response.text ?? "";
+          const finish = response.candidates?.[0]?.finishReason;
+          if (!text.trim() && finish && finish !== "STOP") throw new Error(`empty reply (finishReason ${finish})`);
+          status.lastOk = new Date().toISOString();
+          return text;
+        } catch (error) {
+          lastError = error;
+          recordError(m, error);
+        }
+      }
+      throw lastError;
     };
-  } catch {
-    cached = null; // no Gemini key configured
+  } catch (error) {
+    recordError("config", error); // no Gemini key or model configured
+    cached = null;
   }
   return cached;
 }
@@ -51,6 +85,11 @@ export function cleanTranscript(raw: string): string {
 
 export function createTranscribeRoutes(transcribe: () => Transcribe | null = geminiTranscriber) {
   const routes = Router();
+  // Is voice transcription set up and working? Safe to open in a browser.
+  routes.get("/api/transcribe/status", (_req, res) => {
+    const ready = transcribe() !== null;
+    res.json({ ready, ...status });
+  });
   routes.post(
     "/api/transcribe",
     express.raw({ type: ["audio/*", "application/octet-stream"], limit: MAX_BYTES }),
@@ -71,6 +110,7 @@ export function createTranscribeRoutes(transcribe: () => Transcribe | null = gem
         return;
       }
       touchSession(session);
+      console.log(`[transcribe] ${audio.length} bytes ${req.get("content-type") ?? ""}`);
       try {
         const text = cleanTranscript(await run(audio, (req.get("content-type") ?? "audio/wav").split(";")[0]!));
         res.json({ text });
