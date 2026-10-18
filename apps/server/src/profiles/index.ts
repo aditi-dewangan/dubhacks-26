@@ -3,12 +3,25 @@
 
 import { describeLine } from "../bridge/spoken.ts";
 import { getSession, onKioskStateChange, onSessionEnded } from "../realtime/index.ts";
+import pg from "pg";
+import { filePersistence, postgresPersistence } from "./persistence.ts";
 import { createProfileRoutes } from "./routes.ts";
 import { createProfileStore, type Profile, type SavedOrder } from "./store.ts";
 
 export type { Profile, SavedOrder } from "./store.ts";
 
-const store = createProfileStore({ file: process.env.PROFILES_FILE ?? "profiles.json" });
+// Postgres on Render (DATABASE_URL), a JSON file on laptops. Set DATABASE_SSL=1 for an
+// external connection string; Render's internal one doesn't use SSL.
+const persistence = process.env.DATABASE_URL
+  ? postgresPersistence(new pg.Pool({
+      connectionString: process.env.DATABASE_URL,
+      ssl: process.env.DATABASE_SSL === "1" ? { rejectUnauthorized: false } : undefined,
+      max: 3,
+    }))
+  : filePersistence(process.env.PROFILES_FILE ?? "profiles.json");
+
+const store = createProfileStore({ persistence });
+await store.load();
 
 /** "a double cheeseburger and 1 large vanilla shake" */
 export function describeOrder(order: SavedOrder): string {

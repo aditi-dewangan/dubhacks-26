@@ -3,8 +3,7 @@
 // browser and sends it on later visits. Only a hash of the secret is stored.
 
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
-import { rename, writeFile } from "node:fs/promises";
+import type { ProfilePersistence } from "./persistence.ts";
 
 export interface Profile {
   profileId: string;
@@ -40,40 +39,47 @@ function sameHash(a: string, b: string) {
   return x.length === y.length && timingSafeEqual(x, y);
 }
 
-export function createProfileStore(opts: { file?: string; now?: () => Date } = {}) {
+/**
+ * Profiles live in memory for fast, synchronous lookups; every change is written through to
+ * the persistence (Postgres or a file) in order. Call load() once at startup.
+ */
+export function createProfileStore(opts: { persistence?: ProfilePersistence; now?: () => Date } = {}) {
   const now = opts.now ?? (() => new Date());
   const profiles = new Map<string, Profile>();
   const bySession = new Map<string, string>(); // sessionId -> profileId
 
-  if (opts.file && existsSync(opts.file)) {
-    try {
-      for (const p of JSON.parse(readFileSync(opts.file, "utf8")) as Profile[]) profiles.set(p.profileId, p);
-    } catch (err) {
-      console.error("[profiles] couldn't read", opts.file, err);
-    }
-  }
-
-  // Writes go one at a time, to a temp file renamed into place, so a crash never leaves half a file.
+  // Writes go one at a time, in order, so a later change never lands before an earlier one.
   let writing: Promise<void> = Promise.resolve();
-  function save() {
-    if (!opts.file) return writing;
-    const file = opts.file;
-    const body = JSON.stringify([...profiles.values()], null, 2);
+  function save(changed: Profile) {
+    const persistence = opts.persistence;
+    if (!persistence) return writing;
+    const snapshot = structuredClone(changed);
+    const all = [...profiles.values()].map((p) => structuredClone(p));
     writing = writing
-      .then(() => writeFile(`${file}.tmp`, body))
-      .then(() => rename(`${file}.tmp`, file))
-      .catch((err) => console.error("[profiles] couldn't save", err));
+      .then(() => persistence.save(snapshot, all))
+      .catch((err) => console.error(`[profiles] couldn't save to ${persistence.name}`, err));
     return writing;
   }
 
   return {
+    /** Reads every saved profile. Ordering still works if this fails; profiles just start empty. */
+    async load() {
+      if (!opts.persistence) return;
+      try {
+        for (const p of await opts.persistence.load()) profiles.set(p.profileId, p);
+        console.log(`[profiles] ${profiles.size} profile(s) loaded from ${opts.persistence.name}`);
+      } catch (err) {
+        console.error(`[profiles] couldn't load from ${opts.persistence.name}`, err);
+      }
+    },
+
     /** A new profile. The token is shown to the phone once and never stored in plain text. */
     create(): { profile: Profile; token: string } {
       const secret = randomBytes(32).toString("base64url");
       const at = now().toISOString();
       const profile: Profile = { profileId: randomUUID(), secretHash: hash(secret), createdAt: at, lastSeenAt: at, visits: 0 };
       profiles.set(profile.profileId, profile);
-      void save();
+      void save(profile);
       return { profile, token: `${profile.profileId}.${secret}` };
     },
 
@@ -93,7 +99,7 @@ export function createProfileStore(opts: { file?: string; now?: () => Date } = {
         bySession.set(sessionId, profile.profileId);
         profile.visits += 1;
         profile.lastSeenAt = now().toISOString();
-        void save();
+        void save(profile);
       }
       return profile;
     },
@@ -112,7 +118,7 @@ export function createProfileStore(opts: { file?: string; now?: () => Date } = {
       const others = (profile.orders ?? []).filter((o) => o.place !== saved.place);
       const here = (profile.orders ?? []).filter((o) => o.place === saved.place);
       profile.orders = [...others, ...here.slice(-(ORDERS_PER_PLACE - 1)), saved];
-      void save();
+      void save(profile);
       return saved;
     },
 

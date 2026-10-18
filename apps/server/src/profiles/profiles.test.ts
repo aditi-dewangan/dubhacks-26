@@ -6,6 +6,7 @@ import { join } from "node:path";
 import express from "express";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createProfileRoutes } from "./routes.ts";
+import { filePersistence } from "./persistence.ts";
 import { createProfileStore, type ProfileStore } from "./store.ts";
 
 let server: Server;
@@ -16,7 +17,7 @@ const sessions = new Map<string, { sessionSecret: string; ended: boolean; kioskI
 
 beforeEach(async () => {
   file = join(mkdtempSync(join(tmpdir(), "profiles-")), "profiles.json");
-  store = createProfileStore({ file });
+  store = createProfileStore({ persistence: filePersistence(file) });
   sessions.clear();
   sessions.set("s1", { sessionSecret: "secret-1", ended: false, kioskId: "store42-kiosk1" });
   const app = express();
@@ -97,7 +98,8 @@ describe("remember this phone", () => {
   it("remembers profiles across a server restart", async () => {
     const p = await newProfile();
     await store.flush();
-    const restarted = createProfileStore({ file });
+    const restarted = createProfileStore({ persistence: filePersistence(file) });
+    await restarted.load();
     expect(restarted.verify(p.profileToken)?.profileId).toBe(p.profileId);
     expect(restarted.verify(`${p.profileId}.wrong`)).toBeNull();
   });
