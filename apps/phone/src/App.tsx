@@ -212,6 +212,14 @@ export function App() {
     if (answer) void voice.speakFeedback("Okay. Tap Start ordering whenever you're ready.");
   }, [enterChat]);
 
+  // Stop the conversation loop on screens where voice ordering doesn't apply (Nidhi).
+  useEffect(() => {
+    const ks = kioskState?.screen;
+    if (ks === "paying" || ks === "complete") {
+      voiceRef.current?.setEnabled(false);
+    }
+  }, [kioskState?.screen]);
+
   // ---- Screen routing ----
   if (phase === "init") return null;
   if (phase === "connecting") return <ConnectingScreen />;
@@ -512,6 +520,7 @@ interface ConvProps {
   agentSpeaking: boolean;
   voiceListening: boolean;
   onSend(text: string): void;
+  /** Tap to talk: a fallback when a browser won't reopen the mic by itself. */
   onMicPress(): void;
   onEnd(): void;
   onSettings(): void;
@@ -538,11 +547,11 @@ function ConversationScreen({
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages, agentThinking]);
 
-  const voiceBtnLabel: Record<VoiceState, string> = {
-    idle:      "Microphone off",
-    listening: "Listening — tap to stop",
-    thinking:  "Processing",
-    speaking:  "Assistant speaking",
+  const voiceStatusLabel: Record<VoiceState, string> = {
+    idle:      "Type your message below",
+    listening: "Listening…",
+    thinking:  "Thinking…",
+    speaking:  "Speaking…",
   };
 
   const brandName = kioskState?.kioskId
@@ -604,23 +613,30 @@ function ConversationScreen({
       </ul>
 
       <div className="bottom-panel">
-        <div className="voice-section">
+        {/* Ambient voice status — replaces the mic button */}
+        <div className="voice-status-bar" role="status" aria-live="polite">
           {effectiveVoiceState === "listening" && (
-            <div className="voice-ring" aria-hidden="true" />
+            <span className="voice-ring-inline" aria-hidden="true" />
           )}
-          <button
-            className={`voice-circle voice-${effectiveVoiceState}`}
-            type="button"
-            onClick={onMicPress}
-            disabled={!hasSpeech || effectiveVoiceState === "thinking" || effectiveVoiceState === "speaking"}
-            aria-label={voiceListening ? "Stop recording" : "Start voice input"}
-            aria-pressed={voiceListening}
-          >
-            <MicIcon active={voiceListening} size={28} />
-          </button>
-          <p className="voice-status-label" role="status" aria-live="polite">
-            {voiceBtnLabel[effectiveVoiceState]}
-          </p>
+          {effectiveVoiceState === "speaking" && (
+            <span className="voice-wave-inline" aria-hidden="true">
+              <span /><span /><span />
+            </span>
+          )}
+          {effectiveVoiceState === "thinking" && (
+            <span className="thinking-dots" aria-hidden="true">
+              <span /><span /><span />
+            </span>
+          )}
+          {effectiveVoiceState === "idle" && hasSpeech ? (
+            // The conversation reopens the mic by itself; this is the fallback when a browser won't.
+            <button className="tap-to-talk" type="button" onClick={onMicPress} aria-label="Tap to talk">
+              <MicIcon active={false} size={18} />
+              <span>Tap to talk</span>
+            </button>
+          ) : (
+            <span className="voice-status-text">{voiceStatusLabel[effectiveVoiceState]}</span>
+          )}
         </div>
 
         <div className="secondary-actions">
@@ -1316,19 +1332,9 @@ function EyeOffIcon() {
 // ============================================================
 
 const DEMO_SCREENS: { id: string; label: string }[] = [
-  { id: "login",       label: "Login" },
-  { id: "scanner",     label: "QR Scanner" },
-  { id: "connecting",  label: "Connecting" },
-  { id: "start",       label: "Start" },
-  { id: "conversation",label: "Conversation" },
-  { id: "confirm",     label: "Confirm Order" },
-  { id: "paying",      label: "Pay at Reader" },
-  { id: "complete",    label: "Order Complete" },
-  { id: "ended",       label: "Session Ended" },
-  { id: "error-busy",  label: "Error: Busy" },
-  { id: "error-expired", label: "Error: Expired" },
-  { id: "error-offline", label: "Error: Offline" },
-  { id: "settings",    label: "Settings" },
+  { id: "scanner",  label: "Scan QR" },
+  { id: "login",    label: "Sign In" },
+  { id: "settings", label: "Settings" },
 ];
 
 const MOCK_MSGS: ChatMessage[] = [
@@ -1370,7 +1376,7 @@ const MOCK_KIOSK_COMPLETE: KioskState = {
 };
 
 export function DemoApp() {
-  const initialScreen = new URLSearchParams(window.location.search).get("demo") || "login";
+  const initialScreen = new URLSearchParams(window.location.search).get("demo") || "scanner";
   const [screen, setScreen] = useState(initialScreen);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
@@ -1381,57 +1387,11 @@ export function DemoApp() {
   }, []);
 
   const noop = () => {};
-  const noopStr = (_: string) => {};
 
   const renderScreen = () => {
     switch (screen) {
       case "login":
         return <LoginPage />;
-      case "scanner":
-        return <QrScannerScreen />;
-      case "connecting":
-        return <ConnectingScreen />;
-      case "start":
-        return <StartScreen place="Harbor Burger" status="idle" onStartVoice={noop} onStartText={noop} onProfile={noop} />;
-      case "conversation":
-        return (
-          <>
-            <ConversationScreen
-              messages={MOCK_MSGS}
-              kioskState={{ kioskId: "store42-kiosk1", screen: "menu", title: "Menu", buttons: [], cart: MOCK_CART, sessionActive: true }}
-              agentThinking={false}
-              agentSpeaking={false}
-              voiceListening={false}
-              onSend={noopStr}
-              onMicPress={noop}
-              onEnd={noop}
-              onSettings={() => setSettingsOpen(true)}
-              onRepeat={noop}
-              onCartReview={noop}
-            />
-            {settingsOpen && <SettingsSheet onClose={() => setSettingsOpen(false)} />}
-          </>
-        );
-      case "confirm":
-        return <ConfirmOrderScreen cart={MOCK_CART} onConfirm={noop as never} />;
-      case "paying":
-        return <PayAtReaderScreen kioskState={MOCK_KIOSK_PAYING} onEnd={noop} onRepeat={noop} />;
-      case "complete":
-        return <OrderCompleteScreen kioskState={MOCK_KIOSK_COMPLETE} />;
-      case "ended":
-        return (
-          <SessionEndedScreen
-            heading="Session timed out"
-            body="Your session ended due to inactivity."
-            recovery="Tap the kiosk tag to start a new session."
-          />
-        );
-      case "error-busy":
-        return <CantConnectScreen code="kiosk_busy" />;
-      case "error-expired":
-        return <CantConnectScreen code="code_expired" />;
-      case "error-offline":
-        return <CantConnectScreen code="kiosk_offline" />;
       case "settings":
         return (
           <div className="page" style={{ position: "relative" }}>
@@ -1439,8 +1399,11 @@ export function DemoApp() {
             <SettingsSheet onClose={noop} />
           </div>
         );
+      case "scanner":
       default:
-        return <ConnectingScreen />;
+        // QrScannerScreen navigates via window.location.href when it reads a real code,
+        // which reloads the page at /k/:kioskId?t=... and kicks off the real App flow.
+        return <QrScannerScreen />;
     }
   };
 
@@ -1465,7 +1428,7 @@ export function DemoApp() {
         gap: "0.375rem",
       }}>
         <p style={{ color: "rgba(255,255,255,0.45)", fontSize: "0.7rem", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>
-          Preview — tap a screen
+          Kiosk Access
         </p>
         <div style={{ display: "flex", gap: "0.5rem", overflowX: "auto", paddingBottom: "0.25rem" }}>
           {DEMO_SCREENS.map(s => (
