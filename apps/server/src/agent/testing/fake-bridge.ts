@@ -3,6 +3,12 @@ import { fixtures, menu, type KioskState } from "@kiosk-access/shared";
 import { validateAddItemInput } from "../ordering.ts";
 import type { AgentSession } from "../loop.ts";
 
+const drinkPopup = (): NonNullable<KioskState["popup"]> => ({
+  id: "popup-combo-drink", text: "Which drink would you like with your combo?",
+  buttons: menu.items.find((item) => item.id === "combo_drink")!.optionGroups[0].choices.map((choice) =>
+    ({ id: `popup-drink-${choice.id}`, label: choice.name })),
+});
+
 export function fakeBridge(initial: KioskState = fixtures.menuState) {
   const state = structuredClone(initial);
   const session: AgentSession = { kioskId: state.kioskId, history: [], ended: false, pendingCheckout: null };
@@ -33,7 +39,8 @@ export function fakeBridge(initial: KioskState = fixtures.menuState) {
       const item = menu.items.find((item) => item.id === input.itemId)!;
       state.cart.lines.push({ lineId: `L${nextId++}`, itemId: item.id, name: item.name,
         qty: input.qty as number, options: structuredClone(input.options as Record<string, string[]>), lineTotal: 0 });
-      if (item.upsell) state.popup = structuredClone(fixtures.upsellState.popup);
+      if (item.includesDrink) state.popup = drinkPopup();
+      else if (item.upsell) state.popup = structuredClone(fixtures.upsellState.popup);
       recalculate();
     } else if (name === "update_item" || name === "remove_item") {
       const line = state.cart.lines.find((line) => line.lineId === input.lineId);
@@ -49,14 +56,16 @@ export function fakeBridge(initial: KioskState = fixtures.menuState) {
       recalculate();
     } else if (name === "respond_to_popup") {
       if (!state.popup?.buttons.some((button) => button.id === input.buttonId)) return "Rejected: unavailable popup button.";
-      if (state.popup.id === "popup-upsell" && input.buttonId === "popup-yes") {
-        state.popup = { id: "popup-combo-drink", text: "Which drink would you like with the combo?", buttons:
-          menu.items.find((item) => item.id === "combo_upgrade")!.optionGroups[0].choices.map((choice) =>
-            ({ id: `popup-drink-${choice.id}`, label: choice.name })) };
-      } else {
-        if (state.popup.id === "popup-combo-drink") {
-          state.cart.lines.push({ lineId: `L${nextId++}`, itemId: "combo_upgrade", name: "Combo upgrade", qty: 1,
+      if (state.popup.id === "popup-combo-drink") {
+        if ((input.buttonId as string).startsWith("popup-drink-")) {
+          state.cart.lines.push({ lineId: `L${nextId++}`, itemId: "combo_drink", name: "Combo drink", qty: 1,
             options: { drink: [(input.buttonId as string).replace("popup-drink-", "")] }, lineTotal: 0 });
+          recalculate();
+        }
+        state.popup = structuredClone(fixtures.upsellState.popup);
+      } else {
+        if (state.popup.id === "popup-upsell" && input.buttonId === "popup-yes") {
+          state.cart.lines.push({ lineId: `L${nextId++}`, itemId: "sauce", name: "Cane's Sauce", qty: 1, options: {}, lineTotal: 0 });
           recalculate();
         }
         delete state.popup;

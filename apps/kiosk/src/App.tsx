@@ -4,7 +4,7 @@ import type { SessionEndReason, SessionInfo } from "@kiosk-access/shared";
 import imgRaisingCanes from "./assets/logos/raising-canes.png";
 import imgAmcLogo       from "./assets/logos/amc.png";
 import imgChildrensLogo from "./assets/logos/seattle-childrens.png";
-import imgAmtrakLogo    from "./assets/logos/amtrak.png";
+import imgLightRailLogo from "./assets/logos/lightrail.png";
 import { access } from "./connection.ts";
 import { currentState, runCommand } from "./executor.ts";
 import { Finger } from "./finger.tsx";
@@ -115,7 +115,7 @@ export function App() {
           <KioskNavigation sessionActive={sessionActive} />
           <div className="brand">
             <img
-              src={{ food: imgRaisingCanes, cinema: imgAmcLogo, clinic: imgChildrensLogo, transit: imgAmtrakLogo }[kind]}
+              src={{ food: imgRaisingCanes, cinema: imgAmcLogo, clinic: imgChildrensLogo, transit: imgLightRailLogo }[kind]}
               alt={brand.name}
               className="brand-logo"
             />

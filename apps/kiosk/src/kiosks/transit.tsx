@@ -1,4 +1,4 @@
-// Amtrak: ticket machine at Westlake Station (fares are made up).
+// Light Rail: ticket machine at Westlake Station (fares are made up).
 // welcome → destination → ticket (type, fare, quantity) → review → paying → complete
 
 import { create } from "zustand";
@@ -8,8 +8,6 @@ import { EMPTY_CART, type GenericKiosk } from "../generic.ts";
 import { brand } from "../kinds.ts";
 import { ids, money, round2 } from "../model.ts";
 import { AccessCard, CardReaderScreen } from "../ui.tsx";
-import imgAmtrakLogo from "../assets/logos/amtrak.png";
-
 type Screen = "welcome" | "destination" | "ticket" | "review" | "paying" | "complete";
 type TicketType = "single" | "round" | "day";
 type Fare = "adult" | "youth" | "senior" | "reduced";

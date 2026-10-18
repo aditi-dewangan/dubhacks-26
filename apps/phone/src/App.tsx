@@ -1237,7 +1237,7 @@ export function LoginPage({ onSubmit }: { onSubmit?(username: string): void }) {
       <div className="login-inner">
         <AppLogo />
         <h1 className="login-heading">Sign in</h1>
-        <p className="login-intro">Sign in to personalise your order and access saved preferences.</p>
+        <p className="login-intro">Sign in to personalize your order and access saved preferences.</p>
         <form className="login-form-card" onSubmit={handleSubmit} aria-label="Sign in form" noValidate>
           {error && (
             <div id={errorId} className="panel panel-error" role="alert" aria-live="assertive">

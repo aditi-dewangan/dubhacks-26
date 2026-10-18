@@ -1,4 +1,4 @@
-// AMC Theatres: movie ticket kiosk (all titles are made up).
+// AMC Theaters: movie ticket kiosk (all titles are made up).
 // welcome → movies (pick a showtime) → tickets → seats → review → paying → complete
 
 import { create } from "zustand";

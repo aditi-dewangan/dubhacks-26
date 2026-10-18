@@ -216,8 +216,11 @@ export interface MenuItem {
   description: string;
   tags: string[];
   optionGroups: MenuOptionGroup[];
+  /** Offered in a popup after the item is added; "yes" adds itemId as its own line. */
   upsell?: { text: string; itemId: string; priceDelta: number };
-  /** Hidden items (like a combo upgrade) are only added through an upsell popup. */
+  /** Combos: adding one asks which drink comes with it (the hidden combo_drink item). */
+  includesDrink?: boolean;
+  /** Hidden items (like the combo drink) are only added through a popup. */
   hidden?: boolean;
 }
 

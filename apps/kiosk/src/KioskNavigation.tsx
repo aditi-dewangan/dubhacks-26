@@ -4,7 +4,7 @@ import { kind } from "./kinds.ts";
 import imgRaisingCanes  from "./assets/logos/raising-canes.png";
 import imgAmcLogo       from "./assets/logos/amc.png";
 import imgChildrensLogo from "./assets/logos/seattle-childrens.png";
-import imgAmtrakLogo    from "./assets/logos/amtrak.png";
+import imgLightRailLogo from "./assets/logos/lightrail.png";
 
 const destinations: {
   kind: KioskKind;
@@ -15,9 +15,9 @@ const destinations: {
   colorLight: string;
 }[] = [
   { kind: "food",    label: "Raising Cane's",           description: "Order food at the kiosk",           logo: imgRaisingCanes,  color: "#c8102e", colorLight: "#fff5f5" },
-  { kind: "transit", label: "Amtrak",                   description: "Buy tickets & check schedules",      logo: imgAmtrakLogo,    color: "#1B3A6B", colorLight: "#eef2ff" },
+  { kind: "transit", label: "Light Rail",                description: "Buy tickets & check schedules",      logo: imgLightRailLogo, color: "#047857", colorLight: "#ecfdf5" },
   { kind: "clinic",  label: "Seattle Children's",       description: "Check in for your appointment",      logo: imgChildrensLogo, color: "#0077C8", colorLight: "#eff6ff" },
-  { kind: "cinema",  label: "AMC Theatres",             description: "Browse movies & book seats",         logo: imgAmcLogo,       color: "#CC0000", colorLight: "#fff5f5" },
+  { kind: "cinema",  label: "AMC Theaters",              description: "Browse movies & book seats",         logo: imgAmcLogo,       color: "#CC0000", colorLight: "#fff5f5" },
 ];
 
 function destinationUrl(destination: KioskKind) {
