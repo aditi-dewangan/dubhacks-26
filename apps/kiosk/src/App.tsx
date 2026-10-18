@@ -6,6 +6,7 @@ import { currentState, runCommand } from "./executor.ts";
 import { Finger } from "./finger.tsx";
 import { readScreen, runGenericCommand, type GenericKiosk } from "./generic.ts";
 import { brand, kind, kioskId } from "./kinds.ts";
+import { KioskNavigation } from "./KioskNavigation.tsx";
 import { cinemaKiosk } from "./kiosks/cinema.tsx";
 import { clinicKiosk } from "./kiosks/clinic.tsx";
 import { transitKiosk } from "./kiosks/transit.tsx";
@@ -106,12 +107,15 @@ export function App() {
         </div>
       )}
       <header className="topbar">
-        <div className="brand">
-          <span className="brand-mark" aria-hidden="true">{brand.mark}</span>
-          <span>
-            <span className="brand-name">{brand.name}</span>
-            <span className="brand-meta">{brand.meta}</span>
-          </span>
+        <div className="topbar-leading">
+          <KioskNavigation sessionActive={sessionActive} />
+          <div className="brand">
+            <span className="brand-mark" aria-hidden="true">{brand.mark}</span>
+            <span>
+              <span className="brand-name">{brand.name}</span>
+              <span className="brand-meta">{brand.meta}</span>
+            </span>
+          </div>
         </div>
         <div className={`status status-${status}`}>
           <span className="status-dot" aria-hidden="true" />

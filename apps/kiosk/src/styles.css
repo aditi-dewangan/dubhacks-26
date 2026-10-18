@@ -57,6 +57,7 @@ h1, h2, h3, p { margin: 0; }
   border-bottom: 1px solid var(--line);
   background: var(--white);
 }
+.topbar-leading { display: flex; align-items: center; gap: 1em; min-width: 0; }
 .brand { display: flex; align-items: center; gap: 0.75em; }
 .brand-mark {
   display: grid; place-items: center;
@@ -66,6 +67,57 @@ h1, h2, h3, p { margin: 0; }
 }
 .brand-name { display: block; font-weight: 800; font-size: 1.2em; letter-spacing: -0.01em; }
 .brand-meta { display: block; color: var(--muted); font-size: 0.82em; }
+
+/* ---------- kiosk navigation ---------- */
+
+.kiosk-menu-button {
+  display: grid; place-items: center; flex: none;
+  width: 44px; height: 44px; padding: 0;
+  border: 1px solid var(--line); border-radius: 12px;
+  background: var(--white);
+}
+.kiosk-menu-button:hover:not(:disabled) { background: var(--soft); }
+.kiosk-menu-button:focus-visible, .kiosk-drawer-links a:focus-visible {
+  outline: 3px solid var(--red); outline-offset: 3px;
+}
+.kiosk-drawer {
+  position: fixed; inset: 0 auto 0 0; margin: 0; padding: 0;
+  width: min(380px, 90vw); max-width: none;
+  height: 100%; height: 100dvh; max-height: none;
+  border: none; border-right: 1px solid var(--line);
+  background: var(--white); color: var(--text); font-size: 16px;
+  box-shadow: 12px 0 48px rgb(0 0 0 / 15%);
+}
+.kiosk-drawer[open] { animation: kiosk-drawer-enter 220ms ease-out; }
+.kiosk-drawer::backdrop { background: rgb(0 0 0 / 38%); }
+.kiosk-drawer-panel { min-height: 100%; padding: 24px 20px; }
+.kiosk-drawer-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.kiosk-drawer-heading h2 { font-size: 22px; letter-spacing: -0.02em; }
+.kiosk-drawer-intro { margin: 10px 0 28px; color: var(--muted); }
+.kiosk-drawer-links { display: flex; flex-direction: column; gap: 10px; }
+.kiosk-drawer-links a {
+  display: flex; align-items: center; gap: 12px;
+  min-height: 78px; padding: 14px 12px;
+  border: 1px solid var(--line); border-radius: 14px;
+  text-decoration: none; color: var(--text);
+  transition: background 120ms;
+}
+.kiosk-drawer-links a:hover { background: var(--soft); }
+.kiosk-drawer-links a[aria-current="page"] { background: var(--soft); border-color: var(--red); box-shadow: inset 3px 0 var(--red); }
+.kiosk-drawer-icon { flex: none; font-size: 25px; }
+.kiosk-drawer-label { display: block; font-weight: 750; }
+.kiosk-drawer-description { display: block; margin-top: 4px; color: var(--muted); font-size: 12px; line-height: 1.4; }
+.kiosk-drawer-arrow { margin-left: auto; color: var(--red); font-size: 20px; }
+@keyframes kiosk-drawer-enter { from { transform: translateX(-100%); } to { transform: translateX(0); } }
+@media (prefers-reduced-motion: reduce) {
+  .kiosk-drawer[open] { animation: none; }
+}
+@media (max-width: 600px) {
+  .topbar { padding: 0 12px; gap: 8px; }
+  .topbar-leading { gap: 8px; }
+  .topbar .brand-mark, .topbar .brand-meta { display: none; }
+  .topbar .status { max-width: 110px; font-size: 10px; overflow-wrap: anywhere; }
+}
 
 .content { position: relative; flex: 1; min-height: 0; display: flex; overflow: clip; }
 .content > section { flex: 1; min-width: 0; }
