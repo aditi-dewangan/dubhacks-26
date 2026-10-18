@@ -17,6 +17,21 @@ export interface VoiceCallbacks {
  * Once enabled, the loop is: speak reply → listen → send → repeat.
  * Call dispose() on unmount or session end.
  */
+/**
+ * The last thing every kiosk says: its confirmation code, character by character and said twice,
+ * so it's easy to note down.
+ */
+export function completionMessage(kind: string | undefined, code: string): string {
+  const spelled = code.split("").filter((c) => /[A-Za-z0-9]/.test(c)).join(" ");
+  const again = `Again, ${spelled}.`;
+  switch (kind) {
+    case "clinic": return `You're checked in. Your number is ${spelled}. ${again} Please have a seat; you'll be called.`;
+    case "cinema": return `Your tickets are booked. Your booking code is ${spelled}. ${again}`;
+    case "transit": return `Your ticket is ready. Your ticket code is ${spelled}. ${again}`;
+    default: return `Your order is complete. Your order number is ${spelled}. ${again}`;
+  }
+}
+
 export function createAgentVoice(
   callbacks: VoiceCallbacks,
   getRate: () => number = () => 1.0,
@@ -198,20 +213,19 @@ export function createAgentVoice(
      * Called by bindVoiceSocket when kiosk:state is "complete".
      * Announces the order number then stops the loop.
      */
-    async receiveKioskState(state: { screen: string; orderNumber?: string }) {
+    async receiveKioskState(state: { screen: string; orderNumber?: string; kind?: string }) {
       if (disposed || completion || (ended && endReason !== "order_complete") ||
           state.screen !== "complete" || !state.orderNumber?.trim()) return;
-      completion = `Your order is complete. Your order number is ${state.orderNumber.trim()}.`;
+      completion = completionMessage(state.kind, state.orderNumber.trim());
       generation++;
       speech.stop();
       callbacks.showStatus(completion);
-      if (enabled) {
-        callbacks.setSpeaking?.(true);
-        try { await say(completion); }
-        catch { /* completion announcement — ignore errors */ }
-        finally { callbacks.setSpeaking?.(false); }
-        // No auto-listen after order complete
-      }
+      // Always said out loud, even though voice ordering was switched off on the payment screen.
+      callbacks.setSpeaking?.(true);
+      try { await say(completion); }
+      catch { /* completion announcement — ignore errors */ }
+      finally { callbacks.setSpeaking?.(false); }
+      // No auto-listen after order complete
     },
     /**
      * Asks one question and returns what the customer said, without sending it to the assistant

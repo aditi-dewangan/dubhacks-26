@@ -13,7 +13,7 @@ import {
   type SessionEndReason,
 } from "@kiosk-access/shared";
 import { CommandError, createCommandSender, FINAL_BUTTONS, KIOSK_NO_RESPONSE, type FinalAction, type SafeCommand } from "./commands.ts";
-import { isAffirmative, sameReview, snapshotOf, type ReviewSnapshot } from "./gate.ts";
+import { isAffirmative, isChangeRequest, sameReview, snapshotOf, type ReviewSnapshot } from "./gate.ts";
 import {
   cartTotalSentence,
   describeCart,
@@ -88,6 +88,7 @@ const kindOf = (state: KioskState) => state.kind ?? "food";
 const SENSITIVE_FIELD = /birth|dob|insurance|member|ssn|social|phone|address/i;
 
 const NOT_CONFIRMED = "Payment has not started.";
+const CHANGE_REPLY = { text: "Okay, nothing has been submitted. What would you like to change?", awaitingConfirmation: false };
 
 export function createBridge(deps: BridgeDeps) {
   const commands = createCommandSender({
@@ -163,7 +164,7 @@ export function createBridge(deps: BridgeDeps) {
     if (!session || session.ended) return;
     if (!confirmed) {
       clearGate(sessionId);
-      deps.sendAgentMessage(sessionId, { text: "Okay, nothing has been submitted. What would you like to change?", awaitingConfirmation: false });
+      deps.sendAgentMessage(sessionId, CHANGE_REPLY);
       return;
     }
     // The current contract's user:confirm carries no checkoutId, so the phone confirms the latest one.
@@ -181,7 +182,8 @@ export function createBridge(deps: BridgeDeps) {
     if (!pending) return null;
     if (isAffirmative(text)) return confirmCheckout(sessionId, pending.checkoutId);
     clearGate(sessionId);
-    return null;
+    // Saying the Change button's words does what the button does.
+    return isChangeRequest(text) ? CHANGE_REPLY : null;
   }
 
   // ---------------- tools ----------------

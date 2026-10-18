@@ -8,7 +8,7 @@ import { usePhone } from "./store.ts";
 import { createAgentVoice } from "./agentSpeech.ts";
 import { bindVoiceSocket } from "./voiceSocket.ts";
 import { greeting, kioskKind, placeName, placeNameForKind, WELCOME, type Kind } from "./greeting.ts";
-import { speak, speechLog, speechSupport } from "./speech.ts";
+import { speechLog, speechSupport } from "./speech.ts";
 import { enableVoiceFallback, releaseMic, unlockAudio } from "./voiceFallback.ts";
 import { navigate } from "./nav.ts";
 import { permissionSteps, queryPermission, type Device } from "./permissions.ts";
@@ -280,7 +280,7 @@ export function App() {
     voiceRef.current?.speakFeedback(text);
   }} />;
   if (ks === "complete") return <OrderCompleteScreen kioskState={kioskState} />;
-  if (awaitingConfirmation) return <ConfirmOrderScreen cart={kioskState?.cart ?? null} onConfirm={sendConfirm} />;
+  if (awaitingConfirmation) return <ConfirmOrderScreen kioskState={kioskState} kind={kioskKind(kioskState, kioskId)} onConfirm={sendConfirm} />;
   if (!orderingStarted) return (
     <>
       <StartPage place={placeName(kioskState, kioskId)} kind={kioskKind(kioskState, kioskId)} onStart={startOrdering} />
@@ -691,8 +691,21 @@ function ConversationScreen({
 // ConfirmOrderScreen
 // ============================================================
 
-function ConfirmOrderScreen({ cart, onConfirm }: { cart: Cart | null; onConfirm(confirmed: boolean): void }) {
+// The last screen, per kind of kiosk: what the Confirm button says (the customer can also say it).
+const CONFIRM_COPY: Record<Kind, { heading: string; button: string }> = {
+  food: { heading: "Review your order", button: "Confirm order" },
+  clinic: { heading: "Review your check-in", button: "Complete check-in" },
+  cinema: { heading: "Review your tickets", button: "Confirm order" },
+  transit: { heading: "Review your ticket", button: "Confirm order" },
+};
+
+function ConfirmOrderScreen({ kioskState, kind, onConfirm }: { kioskState: KioskState | null; kind: Kind; onConfirm(confirmed: boolean): void }) {
   const [confirming, setConfirming] = useState(false);
+  const cart = kioskState?.cart ?? null;
+  const copy = CONFIRM_COPY[kind];
+  // A check-in has no cart: its details are the info lines on the kiosk's review screen.
+  const details = kind === "clinic" ? kioskState?.info ?? [] : [];
+  const ready = Boolean(cart?.lines.length) || details.length > 0;
 
   const handleConfirm = () => {
     if (confirming) return;
@@ -706,12 +719,19 @@ function ConfirmOrderScreen({ cart, onConfirm }: { cart: Cart | null; onConfirm(
   };
 
   return (
-    <div className="confirm-page" role="main" aria-label="Review your order">
+    <div className="confirm-page" role="main" aria-label={copy.heading}>
       <header className="welcome-top"><AppLogo /></header>
       <div className="confirm-inner">
-        <h1 className="confirm-heading">Review your order</h1>
+        <h1 className="confirm-heading">{copy.heading}</h1>
+        <p className="confirm-voice-hint" aria-live="polite">
+          Say &ldquo;{kind === "clinic" ? "complete check-in" : "I confirm"}&rdquo; or &ldquo;change&rdquo;, or tap a button.
+        </p>
 
-        {cart && cart.lines.length > 0 ? (
+        {details.length > 0 ? (
+          <ul aria-label="Check-in details" className="confirm-details">
+            {details.map((line, i) => <li key={i}>{line}</li>)}
+          </ul>
+        ) : cart && cart.lines.length > 0 ? (
           <>
             <ul aria-label="Order items" style={{ listStyle: "none", display: "flex", flexDirection: "column", gap: "0.625rem" }}>
               {cart.lines.map(line => <CartLineCard key={line.lineId} line={line} />)}
@@ -731,13 +751,13 @@ function ConfirmOrderScreen({ cart, onConfirm }: { cart: Cart | null; onConfirm(
           className="btn btn-primary"
           type="button"
           onClick={handleConfirm}
-          disabled={confirming || !cart?.lines.length}
+          disabled={confirming || !ready}
           aria-disabled={confirming}
         >
-          {confirming ? "Confirming…" : "Confirm order"}
+          {confirming ? "Confirming…" : copy.button}
         </button>
         <button className="btn btn-outline" type="button" onClick={handleChange} disabled={confirming}>
-          Change order
+          {kind === "clinic" ? "Change details" : "Change order"}
         </button>
       </div>
     </div>
@@ -889,11 +909,7 @@ function OrderCompleteScreen({ kioskState }: { kioskState: KioskState | null }) 
   const orderNumber = kioskState?.orderNumber;
   const kind = kioskKind(kioskState, usePhone.getState().kioskId);
   const copy = COMPLETE_COPY[kind];
-  useEffect(() => {
-    // Read the number out loud: it's also on the kiosk screen, but the customer may not see it.
-    const digits = orderNumber ? String(orderNumber).split("").join(" ") : "";
-    void speak(`${copy.heading}.${digits ? ` ${copy.number} ${digits}. Again, ${digits}.` : ""}`).catch(() => {});
-  }, [orderNumber, copy.heading, copy.number]);
+  // The number is read out loud by the voice controller when the kiosk reports it (completionMessage).
   return (
     <div className="page" role="main" aria-label={copy.heading}>
       <p className="sr-only" aria-live="polite">

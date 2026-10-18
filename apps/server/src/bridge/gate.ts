@@ -2,11 +2,25 @@
 
 import type { Cart, CartLine, KioskState } from "@kiosk-access/shared";
 
-/** The WHOLE message must be a plain yes. "Yes, but make it large" is a change, not a confirm. */
-const AFFIRMATIVE = /^(yes|yeah|yep|confirm|correct|that's right)(,? please)?[.!]*$/i;
+/**
+ * The WHOLE message must be a plain yes, or the words on the phone's Confirm button said out loud
+ * ("I confirm", "complete check-in"). "Yes, but make it large" is a change, not a confirm.
+ */
+const AFFIRMATIVE = new RegExp("^(yes|yeah|yep|correct|that's right|(yes,? )?i confirm|(yes,? )?confirm" +
+  "( (my |the )?(order|check-?in|tickets?|purchase))?|(yes,? )?(complete|finish) (my |the )?check-?in|" +
+  "(yes,? )?check me in|(yes,? )?place (my |the )?order)(,? please)?[.!]*$", "i");
+
+/** The whole message asks to go back and change things, like the phone's Change button. */
+const CHANGE = /^(no|nope|change|change (it|that|something|my order|the order|order|my check-?in)|i want to change( it| that| something| my order)?|edit( my)? order|go back)(,? please)?[.!]*$/i;
+
+const plain = (text: string) => text.trim().replace(/[’‘]/g, "'").replace(/\s+/g, " ");
 
 export function isAffirmative(text: string): boolean {
-  return AFFIRMATIVE.test(text.trim().replace(/[’‘]/g, "'"));
+  return AFFIRMATIVE.test(plain(text));
+}
+
+export function isChangeRequest(text: string): boolean {
+  return CHANGE.test(plain(text));
 }
 
 /** One line as a comparable string: item, quantity and sorted options. Prices are left out on purpose. */
