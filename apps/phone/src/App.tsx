@@ -469,7 +469,6 @@ export function QrScannerScreen() {
           {codeError && <p className="code-entry-error" role="alert">{codeError}</p>}
         </form>
 
-        <a className="profile-link" href="/profile">My profile &amp; order history</a>
 
 
 
