@@ -1182,19 +1182,9 @@ function EyeOffIcon() {
 // ============================================================
 
 const DEMO_SCREENS: { id: string; label: string }[] = [
-  { id: "login",       label: "Login" },
-  { id: "scanner",     label: "QR Scanner" },
-  { id: "connecting",  label: "Connecting" },
-  { id: "start",       label: "Start" },
-  { id: "conversation",label: "Conversation" },
-  { id: "confirm",     label: "Confirm Order" },
-  { id: "paying",      label: "Pay at Reader" },
-  { id: "complete",    label: "Order Complete" },
-  { id: "ended",       label: "Session Ended" },
-  { id: "error-busy",  label: "Error: Busy" },
-  { id: "error-expired", label: "Error: Expired" },
-  { id: "error-offline", label: "Error: Offline" },
-  { id: "settings",    label: "Settings" },
+  { id: "scanner",  label: "Scan QR" },
+  { id: "login",    label: "Sign In" },
+  { id: "settings", label: "Settings" },
 ];
 
 const MOCK_MSGS: ChatMessage[] = [
@@ -1236,7 +1226,7 @@ const MOCK_KIOSK_COMPLETE: KioskState = {
 };
 
 export function DemoApp() {
-  const initialScreen = new URLSearchParams(window.location.search).get("demo") || "login";
+  const initialScreen = new URLSearchParams(window.location.search).get("demo") || "scanner";
   const [screen, setScreen] = useState(initialScreen);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
@@ -1247,55 +1237,11 @@ export function DemoApp() {
   }, []);
 
   const noop = () => {};
-  const noopStr = (_: string) => {};
 
   const renderScreen = () => {
     switch (screen) {
       case "login":
         return <LoginPage />;
-      case "scanner":
-        return <QrScannerScreen />;
-      case "connecting":
-        return <ConnectingScreen />;
-      case "start":
-        return <StartScreen kioskId="store42-kiosk1" onStartVoice={noop} onStartText={noop} />;
-      case "conversation":
-        return (
-          <>
-            <ConversationScreen
-              messages={MOCK_MSGS}
-              kioskState={{ kioskId: "store42-kiosk1", screen: "menu", title: "Menu", buttons: [], cart: MOCK_CART, sessionActive: true }}
-              agentThinking={false}
-              agentSpeaking={false}
-              onSend={noopStr}
-              onEnd={noop}
-              onSettings={() => setSettingsOpen(true)}
-              onRepeat={noop}
-              onCartReview={noop}
-            />
-            {settingsOpen && <SettingsSheet onClose={() => setSettingsOpen(false)} />}
-          </>
-        );
-      case "confirm":
-        return <ConfirmOrderScreen cart={MOCK_CART} onConfirm={noop as never} />;
-      case "paying":
-        return <PayAtReaderScreen kioskState={MOCK_KIOSK_PAYING} onEnd={noop} />;
-      case "complete":
-        return <OrderCompleteScreen kioskState={MOCK_KIOSK_COMPLETE} />;
-      case "ended":
-        return (
-          <SessionEndedScreen
-            heading="Session timed out"
-            body="Your session ended due to inactivity."
-            recovery="Tap the kiosk tag to start a new session."
-          />
-        );
-      case "error-busy":
-        return <CantConnectScreen code="kiosk_busy" />;
-      case "error-expired":
-        return <CantConnectScreen code="code_expired" />;
-      case "error-offline":
-        return <CantConnectScreen code="kiosk_offline" />;
       case "settings":
         return (
           <div className="page" style={{ position: "relative" }}>
@@ -1303,8 +1249,11 @@ export function DemoApp() {
             <SettingsSheet onClose={noop} />
           </div>
         );
+      case "scanner":
       default:
-        return <ConnectingScreen />;
+        // QrScannerScreen navigates via window.location.href when it reads a real code,
+        // which reloads the page at /k/:kioskId?t=... and kicks off the real App flow.
+        return <QrScannerScreen />;
     }
   };
 
@@ -1329,7 +1278,7 @@ export function DemoApp() {
         gap: "0.375rem",
       }}>
         <p style={{ color: "rgba(255,255,255,0.45)", fontSize: "0.7rem", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>
-          Preview — tap a screen
+          Kiosk Access
         </p>
         <div style={{ display: "flex", gap: "0.5rem", overflowX: "auto", paddingBottom: "0.25rem" }}>
           {DEMO_SCREENS.map(s => (
