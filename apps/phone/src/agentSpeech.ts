@@ -96,15 +96,19 @@ export function createAgentVoice(
       if (spoke) this.listenAgain(current);
     },
     /** The first thing the customer hears, right after their tap; then the conversation is hands-free. */
-    async greet(text: string) {
+    /**
+     * auto: started without a tap (right after connecting). iPhones may keep the greeting
+     * silent until the first touch, so listening starts whether or not it was heard.
+     */
+    async greet(text: string, options: { auto?: boolean } = {}) {
       if (disposed || !text.trim()) return;
       const current = ++generation;
       callbacks.setSpeaking?.(true);
       let spoke = false;
-      try { await speech.speak(text, "en-US", getRate()); spoke = true; }
-      catch (error) { if (current === generation) report(error); }
+      try { await speech.speak(text, "en-US", getRate(), options.auto ? { startTimeoutMs: 2500 } : {}); spoke = true; }
+      catch (error) { if (current === generation && !options.auto) report(error); }
       finally { if (current === generation) callbacks.setSpeaking?.(false); }
-      if (spoke) this.listenAgain(current);
+      if (spoke || options.auto) this.listenAgain(current);
     },
     /** Opens the mic after speaking, unless something newer happened (new speech, a tap, typing). */
     listenAgain(after: number) {

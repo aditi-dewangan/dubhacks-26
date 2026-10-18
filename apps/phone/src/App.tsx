@@ -63,6 +63,7 @@ export function App() {
   const [settingsOpen,  setSettingsOpen]  = useState(false);
   const [cartReviewOpen, setCartReviewOpen] = useState(false);
   const [permissionHelp, setPermissionHelp] = useState<Device | null>(null);
+  const startOrderingRef = useRef<(withVoice: boolean, auto?: boolean) => void>(() => {});
 
   // Keep speech rate accessible to agentVoice without re-creating it on every render
   const speechRateRef = useRef(speechRate);
@@ -122,7 +123,8 @@ export function App() {
         socket.on("connect", () => {
           if (cancelled) return;
           store.setPhase("active");
-          voice.speakFeedback("Connected to kiosk. Tap Start voice ordering to begin.");
+          // Voice ordering turns itself on: greet, then listen. The browser asks for the mic if needed.
+          if (!usePhone.getState().orderingStarted && speechSupport().recognition) startOrderingRef.current(true, true);
         });
         socket.on("connect_error", e => {
           if (!cancelled) store.setError("connect_failed", e.message);
@@ -184,7 +186,7 @@ export function App() {
 
   // The customer's first tap. Browsers only allow speech and the mic after a tap, so the
   // greeting is spoken here; after it, the mic reopens by itself after every reply.
-  const startOrdering = useCallback((withVoice: boolean) => {
+  const startOrdering = useCallback((withVoice: boolean, auto = false) => {
     const store = usePhone.getState();
     store.setOrderingStarted(true);
     const hello = greeting(store.kioskState, store.profile);
@@ -197,8 +199,16 @@ export function App() {
         if (iosNonSafari() && (await prepareMic()) === "denied") setPermissionHelp("microphone");
       });
       voiceRef.current?.setEnabled(true, { handsFree: true });
-      void voiceRef.current?.greet(hello);
+      void voiceRef.current?.greet(hello, { auto });
     }
+  }, []);
+  startOrderingRef.current = startOrdering;
+
+  // The first touch anywhere lets iPhones play speech and record (they block both until a tap).
+  useEffect(() => {
+    const unlock = () => unlockAudio();
+    document.addEventListener("pointerdown", unlock, { once: true });
+    return () => document.removeEventListener("pointerdown", unlock);
   }, []);
 
   // ---- Screen routing ----
