@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { normalizeCode } from "@kiosk-access/shared";
 import type { Cart, CartLine, KioskState, SessionEndReason } from "@kiosk-access/shared";
 import { attachProfile, connectSocket, createSession, parseParams } from "./connection.ts";
 import type { PhoneSocket } from "./connection.ts";
@@ -31,6 +32,8 @@ const ERROR_INFO: Record<string, ErrorInfo> = {
   kiosk_offline:  { heading: "Kiosk is offline",       body: "This kiosk is currently offline.",                    recovery: "Ask a staff member for help.",                       canRetry: false },
   connect_failed: { heading: "Connection failed",      body: "Could not reach the server.",                         recovery: "Check your internet connection and try again.",      canRetry: true  },
   bad_url:        { heading: "Link not recognised",    body: "This link does not contain a valid connection code.", recovery: "Tap the kiosk tag again for a fresh link.",          canRetry: false },
+  code_not_found: { heading: "Code not found",         body: "We couldn't find a kiosk with that code.",           recovery: "Check the code on the kiosk and try again. Codes look like FD12345.", canRetry: false },
+  too_many_attempts: { heading: "Too many tries",      body: "Too many wrong codes were entered.",                  recovery: "Wait a few minutes, then try again or ask staff for help.", canRetry: false },
   unknown:        { heading: "Something went wrong",   body: "An unexpected error occurred.",                       recovery: "Try tapping the kiosk tag again, or ask for help.", canRetry: false },
 };
 
@@ -74,7 +77,7 @@ export function App() {
 
     (async () => {
       try {
-        const sess = await createSession(params.kioskId, params.token);
+        const sess = await createSession(params);
         if (cancelled) return;
         socket = connectSocket(sess.sessionId, sess.sessionSecret);
         socketRef.current = socket;
@@ -255,7 +258,8 @@ function QrScannerScreen() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [cameraError, setCameraError] = useState("");
   const [found, setFound] = useState(false);
-  const [manualUrl, setManualUrl] = useState("");
+  const [codeInput, setCodeInput] = useState("");
+  const [codeError, setCodeError] = useState("");
   const supported = Boolean(BarcodeDetectorAPI);
 
   useEffect(() => {
@@ -302,10 +306,15 @@ function QrScannerScreen() {
     };
   }, [supported]);
 
-  const submitManual = () => {
-    const path = parseQrUrl(manualUrl.trim());
-    if (path) { window.location.href = path; }
-    else setCameraError("That URL doesn't look like a valid kiosk link. Try scanning again.");
+  // Kiosk codes: FD (food), CN (cinema), TR (transit), HP (hospital) + 5 digits, e.g. FD48213.
+  const submitCode = () => {
+    const code = normalizeCode(codeInput);
+    if (!code) {
+      setCodeError("Codes are two letters and five numbers, like FD12345.");
+      return;
+    }
+    setCodeError("");
+    window.location.href = `/c/${code}`;
   };
 
   return (
@@ -348,27 +357,36 @@ function QrScannerScreen() {
           </div>
         )}
 
-        {(cameraError || !supported) && (
-          <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-            <p style={{ fontSize: "0.9rem", color: "var(--text-3)" }}>Or paste the link shown on the kiosk:</p>
-            <div className="text-row">
-              <input
-                className="text-field"
-                type="url"
-                inputMode="url"
-                placeholder="https://…"
-                value={manualUrl}
-                onChange={e => setManualUrl(e.target.value)}
-                onKeyDown={e => { if (e.key === "Enter") submitManual(); }}
-                aria-label="Kiosk link"
-                style={{ flex: 1 }}
-              />
-              <button className="send-btn" type="button" onClick={submitManual} aria-label="Connect">
-                <SendIcon />
-              </button>
-            </div>
+        <form
+          className="code-entry"
+          onSubmit={e => { e.preventDefault(); submitCode(); }}
+          aria-labelledby="code-entry-heading"
+        >
+          <h2 id="code-entry-heading" className="code-entry-heading">Or enter the kiosk code</h2>
+          <p id="code-entry-hint" className="code-entry-hint">
+            It&apos;s shown under the QR code on the kiosk, for example FD12345.
+          </p>
+          <div className="code-entry-row">
+            <input
+              className="code-field"
+              type="text"
+              inputMode="text"
+              autoCapitalize="characters"
+              autoComplete="off"
+              autoCorrect="off"
+              spellCheck={false}
+              maxLength={9}
+              placeholder="FD12345"
+              value={codeInput}
+              onChange={e => { setCodeInput(e.target.value.toUpperCase()); setCodeError(""); }}
+              aria-label="Kiosk code"
+              aria-describedby="code-entry-hint"
+              aria-invalid={Boolean(codeError)}
+            />
+            <button className="btn btn-primary code-connect" type="submit">Connect</button>
           </div>
-        )}
+          {codeError && <p className="code-entry-error" role="alert">{codeError}</p>}
+        </form>
 
         {cameraError && <p className="voice-error-msg" role="alert">{cameraError}</p>}
       </div>
@@ -435,8 +453,8 @@ function StartScreen({ kioskId, onStartVoice, onStartText }: {
 
         <div className="start-actions">
           {hasSpeech && (
-            <button className="btn btn-primary" type="button" onClick={onStartVoice} autoFocus>
-              <MicIcon active={false} size={20} />
+            <button className="btn btn-primary btn-xl" type="button" onClick={onStartVoice} autoFocus>
+              <MicIcon active={false} size={30} />
               Start voice ordering
             </button>
           )}

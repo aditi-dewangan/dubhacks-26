@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
-import type { ApiError, CreateSessionResponse, SessionEndReason } from "@kiosk-access/shared";
+import { kioskCode, type ApiError, type CreateSessionResponse, type SessionEndReason } from "@kiosk-access/shared";
 import { config } from "../config.ts";
 import { runSafely, sessionEndedHandlers } from "./hooks.ts";
 import { io } from "./io.ts";
@@ -11,7 +11,17 @@ export type CreateResult =
   | { ok: true; body: CreateSessionResponse }
   | { ok: false; status: number; body: ApiError };
 
-export function createSession(kioskId: string, token: string): CreateResult {
+/** Start a session from a kiosk's fixed code (e.g. "FD48213", already normalized). */
+export function createSessionByCode(code: string): CreateResult {
+  const k = [...kiosks.values()].find((kiosk) => kioskCode(kiosk.kioskId) === code);
+  if (!k) {
+    return { ok: false, status: 404, body: { error: "code_not_found", message: "We couldn't find a kiosk with that code." } };
+  }
+  return createSession(k.kioskId, null);
+}
+
+/** Start a session. `token` is the QR link's token, or null when the kiosk's fixed code was used. */
+export function createSession(kioskId: string, token: string | null): CreateResult {
   const k = kiosks.get(kioskId);
   if (!k || !k.online) {
     return { ok: false, status: 503, body: { error: "kiosk_offline", message: "This kiosk isn't connected right now." } };
@@ -19,7 +29,7 @@ export function createSession(kioskId: string, token: string): CreateResult {
   if (k.sessionId) {
     return { ok: false, status: 409, body: { error: "kiosk_busy", message: "This kiosk is being used by someone else." } };
   }
-  if (!isTokenValid(k, token)) {
+  if (token !== null && !isTokenValid(k, token)) {
     return { ok: false, status: 410, body: { error: "code_expired", message: "This code expired. Please scan again." } };
   }
 

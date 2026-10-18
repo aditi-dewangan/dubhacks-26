@@ -3,7 +3,13 @@
 import { useEffect } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import type { ConnectionStatus } from "@kiosk-access/sdk";
+import { kioskCode } from "@kiosk-access/shared";
+import { kioskId } from "./kinds.ts";
 import { ids, money } from "./model.ts";
+
+/** The phone app address shown next to the kiosk code. */
+const PHONE_HOST = import.meta.env.VITE_PHONE_APP_HOST ?? "allscreen.work";
+const CODE = kioskCode(kioskId);
 
 export function AccessCard({ qrUrl, status, task }: { qrUrl: string | null; status: ConnectionStatus; task: string }) {
   if (qrUrl === null && status === "online") return null; // hidden during a session
@@ -17,7 +23,10 @@ export function AccessCard({ qrUrl, status, task }: { qrUrl: string | null; stat
           <div className="qr-placeholder">{status === "online" ? "Loading code" : "Connecting"}</div>
         )}
       </div>
-      <p className="access-body">Scan with your phone camera to finish {task} by voice from your own phone.</p>
+      <p className="access-code-value" aria-label={`Code ${CODE.split("").join(" ")}`}>{CODE}</p>
+      <p className="access-body">
+        Scan with your phone camera, or enter this code at {PHONE_HOST}, to finish {task} by voice from your own phone.
+      </p>
     </aside>
   );
 }
