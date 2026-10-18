@@ -1237,3 +1237,7 @@ button {
 .code-field[aria-invalid="true"] { border-color: var(--error); }
 .code-connect { flex: 0 0 auto; width: auto; min-height: 60px; padding: 0 1.5rem; }
 .code-entry-error { color: var(--error); font-size: 0.95rem; text-align: left; }
+
+/* Camera scanner states */
+.scanner-viewfinder .scanner-placeholder { position: absolute; inset: 0; color: rgba(255, 255, 255, 0.9); line-height: 1.4; }
+.scanner-retry { width: auto; min-height: 48px; padding: 0 1.25rem; margin-top: 0.25rem; }
