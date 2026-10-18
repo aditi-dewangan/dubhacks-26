@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import type { ConnectionStatus } from "@kiosk-access/sdk";
 import type { SessionEndReason, SessionInfo } from "@kiosk-access/shared";
+import imgRaisingCanes from "./assets/logos/raising-canes.png";
 import { access } from "./connection.ts";
 import { currentState, runCommand } from "./executor.ts";
 import { Finger } from "./finger.tsx";
@@ -161,13 +162,12 @@ function FoodWelcome({ qrUrl, status }: { qrUrl: string | null; status: Connecti
   return (
     <section className="welcome">
       <div className="welcome-hero">
-        <p className="eyebrow">Welcome to Raising Cane&apos;s</p>
+        <img src={imgRaisingCanes} alt="Raising Cane's" className="venue-logo" />
         <h1>Skip the line.<br />Order here.</h1>
         <p className="welcome-sub">Chicken fingers, crinkle-cut fries and Cane&apos;s sauce, made fresh when you order.</p>
         <button className="btn-red start-btn" data-kiosk-id={ids.start} type="button" onClick={start}>
           Start order
         </button>
-        <div className="hero-foods" aria-hidden="true">🍔 🍟 🥤 🍪</div>
       </div>
       <AccessCard qrUrl={qrUrl} status={status} task={brand.task} />
     </section>

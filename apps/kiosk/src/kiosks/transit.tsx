@@ -1,4 +1,4 @@
-// MetroLink: light-rail ticket machine at Westlake Station (fares are made up).
+// Amtrak: ticket machine at Westlake Station (fares are made up).
 // welcome → destination → ticket (type, fare, quantity) → review → paying → complete
 
 import { create } from "zustand";
@@ -8,6 +8,7 @@ import { EMPTY_CART, type GenericKiosk } from "../generic.ts";
 import { brand } from "../kinds.ts";
 import { ids, money, round2 } from "../model.ts";
 import { AccessCard, CardReaderScreen } from "../ui.tsx";
+import imgAmtrakLogo from "../assets/logos/amtrak.png";
 
 type Screen = "welcome" | "destination" | "ticket" | "review" | "paying" | "complete";
 type TicketType = "single" | "round" | "day";
@@ -101,13 +102,12 @@ function Body({ qrUrl, status }: { qrUrl: string | null; status: ConnectionStatu
       return (
         <section className="welcome">
           <div className="welcome-hero">
-            <p className="eyebrow">{brand.name} · Westlake Station</p>
+            <img src={imgAmtrakLogo} alt={brand.name} className="venue-logo" />
             <h1 data-kiosk-title="">Where are you headed?</h1>
             <p className="welcome-sub">Buy light-rail tickets and day passes. Card or phone payment.</p>
             <button className="btn-red start-btn" type="button" data-kiosk-id="btn-start" onClick={() => s.go("destination")}>
               Buy a ticket
             </button>
-            <div className="hero-foods" aria-hidden="true">🚆 🎫 🗺️</div>
           </div>
           <AccessCard qrUrl={qrUrl} status={status} task={brand.task} />
         </section>

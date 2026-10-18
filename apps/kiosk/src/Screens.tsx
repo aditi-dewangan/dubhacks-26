@@ -6,6 +6,7 @@ import {
   getItem,
   ids,
   itemEmoji,
+  itemPhoto,
   missingRequired,
   money,
   unitPrice,
@@ -55,7 +56,9 @@ export function MenuScreen() {
               onClick={() => openItem(item.id)}
             >
               <span className="item-photo" aria-hidden="true">
-                <span className="item-emoji">{itemEmoji(item.id)}</span>
+                {itemPhoto(item.id)
+                  ? <img src={itemPhoto(item.id)!} alt="" className="item-photo-img" />
+                  : <span className="item-emoji">{itemEmoji(item.id)}</span>}
                 <span className="add-dot">+</span>
               </span>
               <span className="item-name">{item.name}</span>
@@ -126,7 +129,11 @@ export function ItemModal() {
           ✕
         </button>
         <div className="modal-scroll">
-          <div className="modal-hero" aria-hidden="true"><span>{itemEmoji(item.id)}</span></div>
+          <div className="modal-hero" aria-hidden="true">
+          {itemPhoto(item.id)
+            ? <img src={itemPhoto(item.id)!} alt="" className="modal-hero-img" />
+            : <span>{itemEmoji(item.id)}</span>}
+        </div>
           <h2 className="modal-title">{item.name}</h2>
           <p className="muted">{item.description}</p>
           <p className="modal-price">{money(item.price)}</p>
@@ -195,7 +202,11 @@ export function CartScreen() {
         <ul className="order-lines">
           {totals.lines.map((l) => (
             <li key={l.lineId} className={l.parentLineId ? "child" : ""}>
-              <span className="line-photo" aria-hidden="true">{itemEmoji(l.itemId)}</span>
+              <span className="line-photo" aria-hidden="true">
+                {itemPhoto(l.itemId)
+                  ? <img src={itemPhoto(l.itemId)!} alt="" className="line-photo-img" />
+                  : itemEmoji(l.itemId)}
+              </span>
               <div className="line-main">
                 <span className="line-name">{l.name}</span>
                 {l.detail && <span className="muted small">{l.detail}</span>}
