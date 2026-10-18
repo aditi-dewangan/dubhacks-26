@@ -1,11 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { Router } from "express";
-import type { CommandAck, CreateSessionRequest, KioskCommand } from "@kiosk-access/shared";
+import { kioskCode, normalizeCode, type CommandAck, type KioskCommand } from "@kiosk-access/shared";
 import { config } from "./config.ts";
 import { onKioskAck, sendToKiosk } from "./realtime/index.ts";
 import { getEvents } from "./realtime/log.ts";
 import { currentCode } from "./realtime/pairing.ts";
-import { createSession } from "./realtime/sessions.ts";
+import { createSession, createSessionByCode } from "./realtime/sessions.ts";
 import { kiosks } from "./realtime/store.ts";
 
 export const routes = Router();
@@ -18,10 +18,36 @@ routes.get("/health", (_req, res) => {
   res.json({ ok: true, kiosksOnline: [...kiosks.values()].filter((k) => k.online).length });
 });
 
+// Wrong kiosk codes per client IP, to stop anyone guessing codes from afar.
+const CODE_ATTEMPT_WINDOW_MS = 5 * 60_000;
+const MAX_WRONG_CODES = 10;
+const wrongCodes = new Map<string, number[]>();
+
 routes.post("/api/sessions", (req, res) => {
-  const body = req.body as Partial<CreateSessionRequest> | undefined;
-  if (typeof body?.kioskId !== "string" || typeof body?.token !== "string") {
-    res.status(400).json({ error: "bad_request", message: "kioskId and token are required." });
+  const body = (req.body ?? {}) as { kioskId?: unknown; token?: unknown; code?: unknown };
+
+  // 1. Fixed kiosk code typed into the phone app, e.g. "FD48213".
+  if (typeof body.code === "string") {
+    const ip = req.ip ?? "unknown";
+    const now = Date.now();
+    const recent = (wrongCodes.get(ip) ?? []).filter((t) => now - t < CODE_ATTEMPT_WINDOW_MS);
+    if (recent.length >= MAX_WRONG_CODES) {
+      res.status(429).json({ error: "too_many_attempts", message: "Too many wrong codes. Please wait a few minutes and try again." });
+      return;
+    }
+    const code = normalizeCode(body.code);
+    const result = code
+      ? createSessionByCode(code)
+      : { ok: false as const, status: 404, body: { error: "code_not_found" as const, message: "Codes look like FD12345: two letters and five numbers." } };
+    if (!result.ok && result.body.error === "code_not_found") wrongCodes.set(ip, [...recent, now]);
+    if (result.ok) res.status(201).json(result.body);
+    else res.status(result.status).json(result.body);
+    return;
+  }
+
+  // 2. QR link: kioskId + rotating token.
+  if (typeof body.kioskId !== "string" || typeof body.token !== "string") {
+    res.status(400).json({ error: "bad_request", message: "Send a kiosk code, or kioskId and token." });
     return;
   }
   const result = createSession(body.kioskId, body.token);
@@ -79,6 +105,7 @@ if (config.devRoutes) {
     res.json(
       [...kiosks.values()].map((k) => ({
         kioskId: k.kioskId,
+        code: kioskCode(k.kioskId),
         online: k.online,
         sessionId: k.sessionId,
         screen: k.lastState?.screen ?? null,
