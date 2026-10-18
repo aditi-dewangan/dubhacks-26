@@ -41,6 +41,12 @@ async function getMic(): Promise<MediaStream> {
   });
   return mic;
 }
+/** Open the mic now (from the Start tap) so the browser asks right away, not after the greeting. */
+export async function prepareMic(): Promise<"ok" | "denied" | "failed"> {
+  try { await getMic(); return "ok"; }
+  catch (err) { return micError(err).code === "permission_denied" ? "denied" : "failed"; }
+}
+
 /** Turn the microphone off (session over or page closed). */
 export function releaseMic() {
   mic?.getTracks().forEach((t) => t.stop());

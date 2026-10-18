@@ -9,8 +9,8 @@ import { createAgentVoice } from "./agentSpeech.ts";
 import { bindVoiceSocket } from "./voiceSocket.ts";
 import { greeting } from "./greeting.ts";
 import { speechSupport } from "./speech.ts";
-import { enableVoiceFallback, releaseMic, unlockAudio } from "./voiceFallback.ts";
-import { permissionSteps, queryPermission, type Device } from "./permissions.ts";
+import { enableVoiceFallback, prepareMic, releaseMic, unlockAudio } from "./voiceFallback.ts";
+import { iosNonSafari, permissionSteps, queryPermission, type Device } from "./permissions.ts";
 import { CAMERA_PROBLEM_TEXT, CameraError, startQrScanner, type CameraProblem } from "./qrScanner.ts";
 
 let _id = 0;
@@ -191,6 +191,11 @@ export function App() {
     store.pushMessage({ id: uid(), role: "agent", text: hello, awaitingConfirmation: false });
     if (withVoice) {
       unlockAudio(); // iPhones only allow recording audio after a tap
+      // Ask for the mic right at this tap. Already blocked: show how to turn it on straight away.
+      void queryPermission("microphone").then(async (status) => {
+        if (status === "denied") { setPermissionHelp("microphone"); return; }
+        if (iosNonSafari() && (await prepareMic()) === "denied") setPermissionHelp("microphone");
+      });
       voiceRef.current?.setEnabled(true, { handsFree: true });
       void voiceRef.current?.greet(hello);
     }
@@ -281,8 +286,7 @@ function parseQrUrl(raw: string): string | null {
 function QrScannerScreen() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const stopRef = useRef<(() => void) | null>(null);
-  // "idle": waiting for a tap, so we don't prompt for the camera every time the page opens.
-  const [camera, setCamera] = useState<"checking" | "idle" | "starting" | "on" | CameraProblem>("checking");
+  const [camera, setCamera] = useState<"starting" | "on" | CameraProblem>("starting");
   const [helpOpen, setHelpOpen] = useState(false);
   const [found, setFound] = useState(false);
   const [codeInput, setCodeInput] = useState("");
@@ -311,16 +315,17 @@ function QrScannerScreen() {
 
   useEffect(() => {
     let alive = true;
-    // Already allowed: open the camera straight away, no prompt. Otherwise wait for a tap.
+    // Open the camera automatically. Already allowed: it just shows. Not asked yet: the browser asks.
+    // Blocked: don't bother the browser, show how to turn it on.
     void queryPermission("camera").then((status) => {
       if (!alive) return;
-      if (status === "granted") void startCamera();
-      else setCamera(status === "denied" ? "denied" : "idle");
+      if (status === "denied") { setCamera("denied"); setHelpOpen(true); }
+      else void startCamera();
     });
     return () => { alive = false; stopRef.current?.(); stopRef.current = null; };
   }, [startCamera]);
 
-  const cameraProblem = camera !== "checking" && camera !== "idle" && camera !== "starting" && camera !== "on" ? camera : null;
+  const cameraProblem = camera !== "starting" && camera !== "on" ? camera : null;
   const canRetry = cameraProblem && cameraProblem !== "insecure" && cameraProblem !== "unsupported" && cameraProblem !== "not_found";
 
   // Kiosk codes: FD (food), CN (cinema), TR (transit), HP (hospital) + 5 digits, e.g. FD48213.
@@ -359,13 +364,6 @@ function QrScannerScreen() {
                 <div className="scanner-corner scanner-corner-bl" />
                 <div className="scanner-corner scanner-corner-br" />
                 <div className="scanner-line" />
-              </div>
-            )}
-            {camera === "idle" && (
-              <div className="scanner-placeholder">
-                <button type="button" className="btn btn-primary scanner-start" onClick={startCamera}>
-                  <CameraIcon /> Scan with camera
-                </button>
               </div>
             )}
             {camera === "starting" && (
@@ -1154,15 +1152,6 @@ function PermissionHelpSheet({ device, onClose, onRetry }: { device: Device; onC
         </div>
       </div>
     </div>
-  );
-}
-
-function CameraIcon() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M3 8a2 2 0 0 1 2-2h2l2-2h6l2 2h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-      <circle cx="12" cy="13" r="3.5" />
-    </svg>
   );
 }
 
