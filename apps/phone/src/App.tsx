@@ -7,13 +7,12 @@ import type { ChatMessage } from "./store.ts";
 import { usePhone } from "./store.ts";
 import { createAgentVoice } from "./agentSpeech.ts";
 import { bindVoiceSocket } from "./voiceSocket.ts";
-import { greeting, kioskKind, placeName, placeNameForKind, wantsToStart, WELCOME, type Kind } from "./greeting.ts";
+import { greeting, kioskKind, placeName, placeNameForKind, type Kind } from "./greeting.ts";
 import { speechSupport } from "./speech.ts";
 import { enableVoiceFallback, prepareMic, releaseMic, unlockAudio } from "./voiceFallback.ts";
 import { navigate } from "./nav.ts";
 import { iosNonSafari, permissionSteps, queryPermission, type Device } from "./permissions.ts";
 import { CAMERA_PROBLEM_TEXT, CameraError, startQrScanner, type CameraProblem } from "./qrScanner.ts";
-import { MENU_ITEMS } from "./menuData.ts";
 
 let _id = 0;
 const uid = () => String(++_id);
@@ -71,14 +70,10 @@ export function App() {
   const [agentThinking, setAgentThinking] = useState(false);
   const [agentSpeaking, setAgentSpeaking] = useState(false);
   const [voiceListening, setVoiceListening] = useState(false);
-  // Welcome screen: the assistant asks "Do you want to start ordering?" before the chat opens.
-  const [welcome, setWelcome] = useState<WelcomeStatus>("idle");
   const [settingsOpen,  setSettingsOpen]  = useState(false);
   const [cartReviewOpen, setCartReviewOpen] = useState(false);
   const [permissionHelp, setPermissionHelp] = useState<Device | null>(null);
-  // Mic not allowed yet: wait for the Start tap so the browser's prompt comes with a reason.
-  const [micNeedsTap, setMicNeedsTap] = useState(false);
-  const askToStartRef = useRef<(auto?: boolean) => void>(() => {});
+  const startOrderingRef = useRef<() => void>(() => {});
 
   // Keep speech rate accessible to agentVoice without re-creating it on every render
   const speechRateRef = useRef(speechRate);
@@ -139,16 +134,8 @@ export function App() {
         socket.on("connect", () => {
           if (cancelled) return;
           store.setPhase("active");
-          // Voice ordering turns itself on (greet, then listen) when the mic is already allowed.
-          // Otherwise wait for a tap: a surprise mic prompt on page load looks broken, and iPhones
-          // keep the greeting silent until a tap anyway. Chrome on iPhone asks again on every visit.
-          if (!usePhone.getState().orderingStarted && speechSupport().recognition) {
-            void queryPermission("microphone").then((mic) => {
-              if (cancelled || usePhone.getState().orderingStarted) return;
-              if (mic === "prompt" || (mic !== "granted" && iosNonSafari())) { setMicNeedsTap(true); return; }
-              askToStartRef.current(true);
-            });
-          }
+          // Straight into the chat: the mic is asked for right away, then the assistant greets and listens.
+          if (!usePhone.getState().orderingStarted) startOrderingRef.current();
         });
         socket.on("connect_error", e => {
           if (!cancelled) store.setError("connect_failed", e.message);
@@ -232,29 +219,19 @@ export function App() {
     return () => document.removeEventListener("pointerdown", unlock);
   }, []);
 
-  // The customer's first tap on the welcome screen (browsers only allow speech after a tap):
-  // the assistant asks whether to start, and a yes opens the chat.
-  // auto: runs by itself right after connecting, so the mic turns on without a tap.
-  const askToStart = useCallback(async (auto = false) => {
-    const voice = voiceRef.current;
-    if (!voice) { enterChat(false); return; }
-    setMicNeedsTap(false);
+  // Runs right after connecting, with no welcome screen or tap. The mic prompt comes first (Chrome on
+  // iPhone asks on every visit), then the chat opens with voice. iPhones keep the greeting silent
+  // until the first touch on the page; that touch plays it (replaySilent above).
+  const startOrdering = useCallback(async () => {
+    if (!voiceRef.current || !speechSupport().recognition) { enterChat(false); return; }
     unlockAudio();
-    // Ask for the mic now. Already blocked: show how to turn it on instead of listening.
     const mic = await queryPermission("microphone");
-    if (mic === "denied" || (iosNonSafari() && (await prepareMic()) === "denied")) {
-      setPermissionHelp("microphone");
-      return;
-    }
-    voice.setEnabled(true);
-    setWelcome("asking");
-    const now = usePhone.getState();
-    const answer = await voice.ask(`Welcome to ${placeName(now.kioskState, now.kioskId)}. ${WELCOME[kioskKind(now.kioskState, now.kioskId)].question}`, { auto });
-    if (answer && wantsToStart(answer)) { setWelcome("idle"); enterChat(true, auto); return; }
-    setWelcome(answer ? "declined" : "unheard");
-    if (answer) void voice.speakFeedback("Okay. Tap the start button whenever you're ready.");
+    const blocked = mic === "denied" || (mic !== "granted" && iosNonSafari() && (await prepareMic()) === "denied");
+    if (usePhone.getState().orderingStarted) return;
+    if (blocked) { enterChat(false); setPermissionHelp("microphone"); return; }
+    enterChat(true, true);
   }, [enterChat]);
-  askToStartRef.current = (auto) => { void askToStart(auto); };
+  startOrderingRef.current = () => { void startOrdering(); };
 
   // Stop the conversation loop on screens where voice ordering doesn't apply (Nidhi).
   useEffect(() => {
@@ -271,7 +248,6 @@ export function App() {
       onRetry={() => {
         setPermissionHelp(null);
         unlockAudio();
-        if (!usePhone.getState().orderingStarted) { void askToStart(); return; }
         voiceRef.current?.setEnabled(true, { handsFree: true });
         void voiceRef.current?.listenAndSend();
       }}
@@ -299,21 +275,8 @@ export function App() {
   }} />;
   if (ks === "complete") return <OrderCompleteScreen kioskState={kioskState} />;
   if (awaitingConfirmation) return <ConfirmOrderScreen cart={kioskState?.cart ?? null} onConfirm={sendConfirm} />;
-  if (!orderingStarted) return (
-    <>
-      <StartScreen
-        place={placeName(kioskState, kioskId)}
-        kind={kioskKind(kioskState, kioskId)}
-        status={voiceListening ? "listening" : agentSpeaking ? "asking" : welcome}
-        micNeedsTap={micNeedsTap}
-        onStartVoice={() => { void askToStart(); }}
-        onStartText={() => enterChat(false)}
-        onProfile={() => setSettingsOpen(true)}
-      />
-      {settingsOpen && <SettingsSheet onClose={() => setSettingsOpen(false)} />}
-      {micHelp}
-    </>
-  );
+  // Only while the browser's mic prompt is up; the chat opens right after.
+  if (!orderingStarted) return <><ConnectingScreen />{micHelp}</>;
 
   return (
     <>
@@ -497,11 +460,6 @@ export function QrScannerScreen() {
 
         <a className="profile-link" href="/profile">My profile &amp; order history</a>
 
-
-        <div className="scanner-menu-preview">
-          <p className="scanner-menu-heading">Today&apos;s Menu</p>
-          <MenuCarousel compact />
-        </div>
       </div>
       {helpOpen && (
         <PermissionHelpSheet device="camera" onClose={() => setHelpOpen(false)} onRetry={() => { setHelpOpen(false); void startCamera(); }} />
@@ -524,75 +482,6 @@ function ConnectingScreen() {
         <p className="connecting-sub" aria-live="polite">
           Please wait while we connect your phone.
         </p>
-      </div>
-    </div>
-  );
-}
-
-// ============================================================
-// StartScreen
-// ============================================================
-
-type WelcomeStatus = "idle" | "asking" | "listening" | "declined" | "unheard";
-
-const WELCOME_STATUS: Record<WelcomeStatus, string> = {
-  idle: "Tap anywhere to start talking.",
-  asking: "Speaking…",
-  listening: "Listening… say yes to start.",
-  declined: "No problem. Tap the start button whenever you're ready.",
-  unheard: "I didn't catch that. Tap the start button to try again.",
-};
-
-const MIC_NOTE = "Tap the start button. Your phone will ask to use the microphone: tap Allow.";
-
-function StartScreen({ place, kind, status, micNeedsTap, onStartVoice, onStartText, onProfile }: {
-  place: string;
-  kind: Kind;
-  status: WelcomeStatus;
-  micNeedsTap: boolean;
-  onStartVoice(): void;
-  onStartText(): void;
-  onProfile(): void;
-}) {
-  const hasSpeech = speechSupport().recognition;
-  const busy = status === "asking" || status === "listening";
-  // A tap anywhere starts voice ordering (the button keeps focus, so a VoiceOver double-tap anywhere works too).
-  const tapAnywhere = (e: React.MouseEvent) => {
-    if (hasSpeech && !busy && !(e.target as HTMLElement).closest("button, a")) onStartVoice();
-  };
-  return (
-    <div className="page welcome-page" role="main" onClick={tapAnywhere}>
-      <header className="welcome-top">
-        <AppLogo />
-        <span className="place-chip" role="status"><span className="place-dot" aria-hidden="true" />{place}</span>
-      </header>
-
-      <div className="welcome-hero">
-        <div className={`voice-orb${busy ? ` voice-orb-${status}` : ""}`} aria-hidden="true">
-          <span /><span /><span />
-          <MicIcon active={status === "listening"} size={40} />
-        </div>
-        <h1 className="welcome-heading">{WELCOME[kind].heading}</h1>
-        <p className="welcome-sub">{WELCOME[kind].sub}</p>
-        <p className="welcome-status" aria-live="polite">{!hasSpeech ? "Type your order below." : micNeedsTap && status === "idle" ? MIC_NOTE : WELCOME_STATUS[status]}</p>
-      </div>
-
-      <ProfileCard />
-
-      <div className="welcome-actions">
-        {hasSpeech && (
-          <button className="btn btn-primary btn-xl" type="button" onClick={onStartVoice} disabled={busy} autoFocus>
-            <MicIcon active={false} size={26} />
-            {WELCOME[kind].start}
-          </button>
-        )}
-        <button className="btn btn-outline" type="button" onClick={onStartText}>
-          <KeyboardIcon />
-          Type instead
-        </button>
-        <button className="btn-ghost welcome-profile" type="button" onClick={onProfile}>
-          My profile &amp; order history
-        </button>
       </div>
     </div>
   );
@@ -977,25 +866,6 @@ const SPEECH_RATES = [
   { label: "Fast",   value: 1.5  },
 ];
 
-/** What this phone's profile remembers, shown on the start screen. */
-function ProfileCard() {
-  const profile = usePhone(s => s.profile);
-  if (!profile) return null;
-  const p = profile.preferences ?? {};
-  const facts = [
-    p.diet?.length ? p.diet.join(" and ") : "",
-    p.allergies?.length ? `allergic to ${p.allergies.join(", ")}` : "",
-  ].filter(Boolean);
-  if (!profile.returning && !p.name && !facts.length) return null;
-  return (
-    <section className="panel panel-lavender profile-card" aria-label="Your profile">
-      <p className="profile-card-title">{p.name ? `Welcome back, ${p.name}` : "Welcome back"}</p>
-      {profile.lastOrder?.spoken && <p>Last time here: {profile.lastOrder.spoken}</p>}
-      {facts.length > 0 && <p>Remembered: {facts.join(" · ")}</p>}
-      <p className="profile-card-hint">Change these in Settings, or just tell the assistant.</p>
-    </section>
-  );
-}
 
 const COMMON_ALLERGIES = ["peanuts", "tree nuts", "dairy", "eggs", "gluten", "shellfish", "soy"];
 
@@ -1483,34 +1353,6 @@ function ReaderIcon() {
       <line x1="16" y1="30" x2="22" y2="30" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
       <line x1="16" y1="34" x2="32" y2="34" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
     </svg>
-  );
-}
-
-function KeyboardIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
-      <rect x="2" y="6" width="20" height="12" rx="2" stroke="currentColor" strokeWidth="2" />
-      <path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M8 14h8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function MenuCarousel({ compact = false }: { compact?: boolean }) {
-  return (
-    <div className="menu-carousel-wrap">
-      {!compact && <p className="menu-carousel-label">Menu</p>}
-      <div className="menu-carousel" role="list" aria-label="Menu items">
-        {MENU_ITEMS.map(item => (
-          <div key={item.id} className="menu-card" role="listitem">
-            <img src={item.image} alt={item.name} className="menu-card-img" loading="lazy" />
-            <div className="menu-card-body">
-              <p className="menu-card-name">{item.name}</p>
-              <p className="menu-card-price">${item.price.toFixed(2)}</p>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
   );
 }
 

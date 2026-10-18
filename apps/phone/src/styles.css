@@ -1278,7 +1278,7 @@ button {
 .code-field::placeholder { color: var(--text-3); letter-spacing: 0.14em; }
 .code-field:focus-visible { outline: 3px solid var(--indigo); outline-offset: 2px; }
 .code-field[aria-invalid="true"] { border-color: var(--error); }
-.code-connect { flex: 0 0 auto; width: auto; min-height: 60px; padding: 0 1.5rem; }
+.code-connect { flex: 0 0 auto; width: auto; min-height: 60px; padding: 0 1.25rem; }
 .code-entry-error { color: var(--error); font-size: 0.95rem; text-align: left; }
 
 /* ---------- Profile (remember this phone) ---------- */
@@ -1428,6 +1428,7 @@ body, .page {
 .code-entry {
   border-radius: var(--radius-card); background: rgba(255, 255, 255, 0.86);
   border: 1px solid var(--border); box-shadow: var(--shadow-md);
+  padding: 1.25rem;
 }
 
 /* ---------- Chat ---------- */
