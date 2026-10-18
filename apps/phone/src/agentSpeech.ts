@@ -16,6 +16,8 @@ export function createAgentVoice(
 ) {
   let disposed = false;
   let enabled = false;
+  // Hands-free: after the assistant finishes speaking, listen again without a mic tap.
+  let handsFree = false;
   let generation = 0;
   let ended = false;
   let endReason: string | undefined;
@@ -27,8 +29,13 @@ export function createAgentVoice(
   };
   return {
     support: speech.support,
-    // Enable from a user gesture; do not start the microphone automatically.
-    setEnabled(value: boolean) { if (!disposed) { enabled = value; if (!value) { generation++; speech.stop(); } } },
+    // Enable from a user gesture. With handsFree, the mic reopens after each spoken reply.
+    setEnabled(value: boolean, options: { handsFree?: boolean } = {}) {
+      if (disposed) return;
+      enabled = value;
+      handsFree = value && Boolean(options.handsFree);
+      if (!value) { generation++; speech.stop(); }
+    },
     async listenAndSend() {
       if (disposed || ended || completion) return;
       const current = ++generation;
@@ -53,9 +60,26 @@ export function createAgentVoice(
       if (disposed || ended || completion || !enabled) return;
       const current = ++generation;
       callbacks.setSpeaking?.(true);
-      try { await speech.speak(message.text, "en-US", getRate()); }
+      let spoke = false;
+      try { await speech.speak(message.text, "en-US", getRate()); spoke = true; }
       catch (error) { if (current === generation) report(error); }
       finally { if (current === generation) callbacks.setSpeaking?.(false); }
+      if (spoke) this.listenAgain(current);
+    },
+    /** The first thing the customer hears, right after their tap; then the conversation is hands-free. */
+    async greet(text: string) {
+      if (disposed || !text.trim()) return;
+      const current = ++generation;
+      callbacks.setSpeaking?.(true);
+      let spoke = false;
+      try { await speech.speak(text, "en-US", getRate()); spoke = true; }
+      catch (error) { if (current === generation) report(error); }
+      finally { if (current === generation) callbacks.setSpeaking?.(false); }
+      if (spoke) this.listenAgain(current);
+    },
+    /** Opens the mic after speaking, unless something newer happened (new speech, a tap, typing). */
+    listenAgain(after: number) {
+      if (handsFree && enabled && !disposed && !ended && !completion && after === generation) void this.listenAndSend();
     },
     async receiveKioskState(state: { screen: string; orderNumber?: string }) {
       if (disposed || completion || (ended && endReason !== "order_complete") ||

@@ -23,10 +23,25 @@ export interface Recognition {
 }
 export interface SpeechEnvironment {
   recognition?: new () => Recognition;
-  synthesis?: Pick<SpeechSynthesis, "cancel" | "speak">;
+  synthesis?: Pick<SpeechSynthesis, "cancel" | "speak"> & Partial<Pick<SpeechSynthesis, "getVoices">>;
   utterance?: new (text: string) => SpeechSynthesisUtterance;
 }
 export interface ListenOptions { lang?: string; timeoutMs?: number }
+
+// Without a chosen voice, browsers use whatever comes first, which on a Mac can be a novelty
+// voice ("Albert", "Bubbles"...). Prefer natural voices on each platform, then any normal one.
+const PREFERRED_VOICES = ["Google US English", "Samantha", "Ava", "Allison", "Susan", "Microsoft Aria", "Microsoft Jenny", "Karen", "Daniel"];
+const NOVELTY_VOICE = /^(Albert|Bad News|Bahh|Bells|Boing|Bubbles|Cellos|Wobble|Eddy|Flo|Fred|Good News|Grandma|Grandpa|Jester|Junior|Kathy|Organ|Ralph|Reed|Rocko|Sandy|Shelley|Superstar|Trinoids|Whisper|Zarvox)\b/i;
+
+export function naturalVoice(voices: SpeechSynthesisVoice[], lang = "en-US"): SpeechSynthesisVoice | undefined {
+  const base = lang.slice(0, 2);
+  for (const name of PREFERRED_VOICES) {
+    const v = voices.find((x) => x.name.startsWith(name) && x.lang.startsWith(base));
+    if (v) return v;
+  }
+  return voices.find((x) => x.lang === lang && !NOVELTY_VOICE.test(x.name))
+    ?? voices.find((x) => x.lang.startsWith(base) && !NOVELTY_VOICE.test(x.name));
+}
 
 export function createSpeechController(environment: () => SpeechEnvironment = browserEnvironment) {
   let cancelListening: (() => void) | undefined;
@@ -95,6 +110,8 @@ export function createSpeechController(environment: () => SpeechEnvironment = br
         // Replacing speech is expected UI behavior, so resolve the old promise.
         cancelSpeaking = () => finish();
         utterance.lang = lang;
+        const voice = naturalVoice(synthesis.getVoices?.() ?? [], lang);
+        if (voice) { utterance.voice = voice; utterance.lang = voice.lang; }
         utterance.rate = rate;
         utterance.onend = () => finish();
         utterance.onerror = () => finish(new SpeechError("failed"));
@@ -111,6 +128,8 @@ function browserEnvironment(): SpeechEnvironment {
   return { recognition: browser.SpeechRecognition ?? browser.webkitSpeechRecognition,
     synthesis: window.speechSynthesis, utterance: window.SpeechSynthesisUtterance };
 }
+// Chrome loads its voice list after page load; asking early makes it ready for the first reply.
+if (typeof window !== "undefined") window.speechSynthesis?.getVoices();
 const speech = createSpeechController();
 export const listen = speech.listen;
 export const speak = speech.speak;

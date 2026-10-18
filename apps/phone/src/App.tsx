@@ -6,6 +6,7 @@ import type { ChatMessage } from "./store.ts";
 import { usePhone } from "./store.ts";
 import { createAgentVoice } from "./agentSpeech.ts";
 import { bindVoiceSocket } from "./voiceSocket.ts";
+import { greeting } from "./greeting.ts";
 import { speechSupport } from "./speech.ts";
 
 let _id = 0;
@@ -162,11 +163,16 @@ export function App() {
     if (last) voiceRef.current?.speakFeedback(last.text);
   }, []);
 
+  // The customer's first tap. Browsers only allow speech and the mic after a tap, so the
+  // greeting is spoken here; after it, the mic reopens by itself after every reply.
   const startOrdering = useCallback((withVoice: boolean) => {
-    usePhone.getState().setOrderingStarted(true);
+    const store = usePhone.getState();
+    store.setOrderingStarted(true);
+    const hello = greeting(store.kioskState);
+    store.pushMessage({ id: uid(), role: "agent", text: hello, awaitingConfirmation: false });
     if (withVoice) {
-      voiceRef.current?.setEnabled(true);
-      voiceRef.current?.speakFeedback("Ready. Tap the microphone button and tell me what you'd like.");
+      voiceRef.current?.setEnabled(true, { handsFree: true });
+      void voiceRef.current?.greet(hello);
     }
   }, []);
 
@@ -398,8 +404,12 @@ function StartScreen({ kioskId, onStartVoice, onStartText }: {
   onStartText(): void;
 }) {
   const hasSpeech = speechSupport().recognition;
+  // A tap anywhere starts voice ordering (the button keeps focus, so a VoiceOver double-tap anywhere works too).
+  const tapAnywhere = (e: React.MouseEvent) => {
+    if (hasSpeech && !(e.target as HTMLElement).closest("button")) onStartVoice();
+  };
   return (
-    <div className="page" role="main">
+    <div className="page" role="main" onClick={tapAnywhere}>
       <p className="sr-only" aria-live="polite">
         Connected to kiosk{kioskId ? ` ${kioskId}` : ""}. Ready to take your order.
       </p>
@@ -419,11 +429,12 @@ function StartScreen({ kioskId, onStartVoice, onStartText }: {
         <div className="start-text">
           <h1 className="start-heading">Your order,<br />your way.</h1>
           <p className="start-sub">Tell us what you&apos;re craving. We&apos;ll handle the rest.</p>
+          {hasSpeech && <p className="start-sub"><strong>Tap anywhere to start talking.</strong></p>}
         </div>
 
         <div className="start-actions">
           {hasSpeech && (
-            <button className="btn btn-primary" type="button" onClick={onStartVoice}>
+            <button className="btn btn-primary" type="button" onClick={onStartVoice} autoFocus>
               <MicIcon active={false} size={20} />
               Start voice ordering
             </button>
