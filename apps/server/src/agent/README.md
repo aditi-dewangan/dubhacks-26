@@ -41,7 +41,7 @@ Offline tests and stub mode need no API key.
   session end. Late input is blocked. `voiceSocket.ts` attaches and removes voice listeners.
 - Hour 14: evaluation supports case selection, repeats, saved JSON reports, failure
   counts and latency percentiles. Offline remains the default; live mode is explicit.
-- Hour 15: regression checks and owner handoff are recorded in [HANDOFF.md](./HANDOFF.md).
+- Hour 15: regression checks are recorded.
   Live API accuracy/latency, real payment-gate integration, and real-device microphone
   checks remain pending; completion of these code milestones does not certify the demo.
 
