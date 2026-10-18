@@ -10,7 +10,7 @@ language accuracy, payment safety, microphone compatibility or an end-to-end dem
 
 | Owner | Required work | Acceptance check |
 | --- | --- | --- |
-| Bridge | Replace `apps/server/src/bridge/index.ts` stubs; enforce command validation, acknowledgements and payment gate | A large no-onion cheeseburger appears on the real kiosk; invalid calls cannot change it |
+| Bridge | Replace `apps/server/src/bridge/index.ts` stubs; enforce command validation, acknowledgements and payment gate | A large lemonade appears on the real kiosk; invalid calls cannot change it |
 | Bridge | Intercept explicit checkout confirmation and invalidate stale snapshots | “Yes, but change the fries” does not pay; a changed cart requires fresh review |
 | Bridge | Schedule unsolicited popup events via `handleKioskEvent` | A popup is explained once without auto-acceptance; do not await an event from inside `executeTool` |
 | Frontend | Wire `createAgentVoice` and `bindVoiceSocket`; retain chat, text input and Confirm UI | Transcripts send once, cleanup removes listeners, order number finishes speaking |
@@ -40,11 +40,11 @@ root README. A successful echo smoke test is transport validation only.
 
 ## Real demo rehearsal, once integrated
 
-1. Pair a phone and ask “What burgers do you have?” Check menu names and prices.
-2. Say “A large cheeseburger, no onions.” Verify the options on the actual kiosk.
-3. Decline the combo. Verify no upgrade was added.
+1. Pair a phone and ask “What combos do you have?” Check menu names and prices.
+2. Say “A Box Combo.” Pick a drink when asked and verify it on the actual kiosk.
+3. Decline the extra Cane's Sauce. Verify no sauce line was added.
 4. Say “That's it.” Verify the readback and total match the kiosk. The starter
-   menu produces $7.99 subtotal and $8.80 total for that burger; updated menu data
+   menu produces $13.49 subtotal and $14.85 total for that combo; updated menu data
    and the real kiosk totals are authoritative.
 5. Change the cart before confirming and verify the old confirmation cannot pay.
    Request checkout again and use the explicit confirmation path.

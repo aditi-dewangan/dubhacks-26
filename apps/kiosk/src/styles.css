@@ -47,75 +47,112 @@ h1, h2, h3, p { margin: 0; }
 
 .topbar {
   position: relative;
-  z-index: 22; /* above the session touch blocker so staff can end the session */
+  z-index: 22;
   flex: none;
-  height: 4.6em;
+  height: 4.8em;
   padding: 0 2em;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  border-bottom: 1px solid var(--line);
   background: var(--white);
+  border-bottom: 2px solid var(--brand-color, var(--red));
+  box-shadow: 0 2px 12px rgba(0,0,0,0.06);
 }
 .topbar-leading { display: flex; align-items: center; gap: 1em; min-width: 0; }
-.brand { display: flex; align-items: center; gap: 0.75em; }
-.brand-mark {
-  display: grid; place-items: center;
-  width: 2.5em; height: 2.5em; border-radius: 50%;
-  background: var(--red); color: var(--white);
-  font-weight: 800; font-size: 0.95em;
+.brand { display: flex; align-items: center; gap: 0.85em; }
+.brand-logo {
+  height: 2.6em;
+  max-width: 8em;
+  object-fit: contain;
+  flex: none;
 }
-.brand-name { display: block; font-weight: 800; font-size: 1.2em; letter-spacing: -0.01em; }
-.brand-meta { display: block; color: var(--muted); font-size: 0.82em; }
+.brand-name { display: block; font-weight: 800; font-size: 1.15em; letter-spacing: -0.01em; }
+.brand-meta { display: block; color: var(--muted); font-size: 0.8em; }
 
 /* ---------- kiosk navigation ---------- */
 
 .kiosk-menu-button {
   display: grid; place-items: center; flex: none;
   width: 44px; height: 44px; padding: 0;
-  border: 1px solid var(--line); border-radius: 12px;
+  border: 1.5px solid var(--line); border-radius: 12px;
   background: var(--white);
+  transition: background 120ms, border-color 120ms;
 }
-.kiosk-menu-button:hover:not(:disabled) { background: var(--soft); }
-.kiosk-menu-button:focus-visible, .kiosk-drawer-links a:focus-visible {
-  outline: 3px solid var(--red); outline-offset: 3px;
-}
+.kiosk-menu-button:hover:not(:disabled) { background: var(--soft); border-color: #ccc; }
+.kiosk-menu-button:focus-visible { outline: 3px solid var(--brand-color, var(--red)); outline-offset: 3px; }
+
+/* ---------- navigation drawer ---------- */
+
 .kiosk-drawer {
   position: fixed; inset: 0 auto 0 0; margin: 0; padding: 0;
-  width: min(380px, 90vw); max-width: none;
+  width: min(400px, 92vw); max-width: none;
   height: 100%; height: 100dvh; max-height: none;
   border: none; border-right: 1px solid var(--line);
-  background: var(--white); color: var(--text); font-size: 16px;
-  box-shadow: 12px 0 48px rgb(0 0 0 / 15%);
+  background: #fafafa; color: var(--text); font-size: 16px;
+  box-shadow: 16px 0 56px rgba(0,0,0,0.18);
 }
-.kiosk-drawer[open] { animation: kiosk-drawer-enter 220ms ease-out; }
-.kiosk-drawer::backdrop { background: rgb(0 0 0 / 38%); }
-.kiosk-drawer-panel { min-height: 100%; padding: 24px 20px; }
-.kiosk-drawer-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.kiosk-drawer-heading h2 { font-size: 22px; letter-spacing: -0.02em; }
-.kiosk-drawer-intro { margin: 10px 0 28px; color: var(--muted); }
+.kiosk-drawer[open] { animation: kiosk-drawer-enter 240ms cubic-bezier(0.32, 0.72, 0, 1); }
+.kiosk-drawer::backdrop { background: rgba(0,0,0,0.42); backdrop-filter: blur(2px); }
+.kiosk-drawer-panel { min-height: 100%; padding: 28px 22px; }
+.kiosk-drawer-heading {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin-bottom: 6px;
+}
+.kiosk-drawer-heading h2 { font-size: 24px; font-weight: 800; letter-spacing: -0.025em; }
+.kiosk-drawer-intro { margin: 6px 0 24px; color: var(--muted); font-size: 14px; }
+
 .kiosk-drawer-links { display: flex; flex-direction: column; gap: 10px; }
-.kiosk-drawer-links a {
-  display: flex; align-items: center; gap: 12px;
-  min-height: 78px; padding: 14px 12px;
-  border: 1px solid var(--line); border-radius: 14px;
+
+.kiosk-drawer-card {
+  display: flex; align-items: center; gap: 14px;
+  padding: 0; min-height: 80px;
+  border: 1.5px solid var(--line); border-radius: 16px;
   text-decoration: none; color: var(--text);
-  transition: background 120ms;
+  background: var(--white);
+  overflow: hidden;
+  transition: transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease;
+  position: relative;
 }
-.kiosk-drawer-links a:hover { background: var(--soft); }
-.kiosk-drawer-links a[aria-current="page"] { background: var(--soft); border-color: var(--red); box-shadow: inset 3px 0 var(--red); }
-.kiosk-drawer-icon { flex: none; font-size: 25px; }
-.kiosk-drawer-label { display: block; font-weight: 750; }
-.kiosk-drawer-description { display: block; margin-top: 4px; color: var(--muted); font-size: 12px; line-height: 1.4; }
-.kiosk-drawer-arrow { margin-left: auto; color: var(--red); font-size: 20px; }
+.kiosk-drawer-card::before {
+  content: "";
+  position: absolute; top: 0; left: 0; bottom: 0; width: 4px;
+  background: var(--dest-color, var(--red));
+  opacity: 0;
+  transition: opacity 140ms;
+}
+.kiosk-drawer-card:hover { transform: translateY(-1px); box-shadow: 0 4px 16px rgba(0,0,0,0.09); border-color: #ddd; }
+.kiosk-drawer-card:hover::before,
+.kiosk-drawer-card.active::before { opacity: 1; }
+.kiosk-drawer-card.active {
+  background: var(--dest-color-light, #fff5f5);
+  border-color: var(--dest-color, var(--red));
+  box-shadow: 0 2px 12px rgba(0,0,0,0.07);
+}
+.kiosk-drawer-logo-wrap {
+  flex: none;
+  width: 88px; height: 80px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--dest-color-light, #fff5f5);
+  border-right: 1px solid var(--line);
+  padding: 10px;
+}
+.kiosk-drawer-logo {
+  max-width: 64px; max-height: 44px;
+  object-fit: contain;
+}
+.kiosk-drawer-info { flex: 1; padding: 0 8px 0 2px; min-width: 0; }
+.kiosk-drawer-label { display: block; font-weight: 750; font-size: 15px; }
+.kiosk-drawer-description { display: block; margin-top: 3px; color: var(--muted); font-size: 12px; line-height: 1.4; }
+.kiosk-drawer-check { flex: none; margin-right: 14px; font-size: 18px; color: var(--dest-color, var(--red)); font-weight: 700; }
+
 @keyframes kiosk-drawer-enter { from { transform: translateX(-100%); } to { transform: translateX(0); } }
-@media (prefers-reduced-motion: reduce) {
-  .kiosk-drawer[open] { animation: none; }
-}
+@media (prefers-reduced-motion: reduce) { .kiosk-drawer[open] { animation: none; } }
+
 @media (max-width: 600px) {
   .topbar { padding: 0 12px; gap: 8px; }
   .topbar-leading { gap: 8px; }
-  .topbar .brand-mark, .topbar .brand-meta { display: none; }
+  .topbar .brand-meta { display: none; }
+  .brand-logo { max-width: 5em; }
   .topbar .status { max-width: 110px; font-size: 10px; overflow-wrap: anywhere; }
 }
 
@@ -160,13 +197,24 @@ h1, h2, h3, p { margin: 0; }
   grid-template-columns: 1.3fr 1fr;
   gap: 3em;
   align-items: center;
-  padding: 2em 4em;
+  padding: 2.5em 4em;
+  background: linear-gradient(160deg, #fff 60%, var(--soft) 100%);
 }
-.eyebrow { color: var(--red); font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.85em; margin-bottom: 0.8em; }
-.welcome h1 { font-size: 4.2em; line-height: 1.02; letter-spacing: -0.035em; font-weight: 800; }
-.welcome-sub { font-size: 1.25em; color: var(--muted); margin: 0.8em 0 1.6em; max-width: 26em; }
-.start-btn { font-size: 1.35em; padding: 0.9em 2.4em; }
-.hero-foods { margin-top: 2em; font-size: 2.4em; letter-spacing: 0.2em; }
+.eyebrow { color: var(--brand-color, var(--red)); font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.85em; margin-bottom: 0.8em; }
+.welcome h1 { font-size: 4em; line-height: 1.02; letter-spacing: -0.035em; font-weight: 800; }
+.welcome-sub { font-size: 1.2em; color: var(--muted); margin: 0.8em 0 1.8em; max-width: 26em; line-height: 1.5; }
+.start-btn {
+  font-size: 1.35em; padding: 0.9em 2.4em;
+  background: var(--brand-color, var(--red));
+  box-shadow: 0 4px 18px rgba(0,0,0,0.18);
+  transition: background 150ms, transform 100ms, box-shadow 150ms;
+}
+.start-btn:hover:not(:disabled) {
+  background: var(--brand-dark, var(--red-dark));
+  transform: translateY(-1px);
+  box-shadow: 0 6px 24px rgba(0,0,0,0.22);
+}
+.hero-foods { display: none; }
 
 .access-card {
   justify-self: center;
@@ -230,7 +278,14 @@ h1, h2, h3, p { margin: 0; }
 .item-card {
   display: flex; flex-direction: column; align-items: flex-start; gap: 0.2em;
   text-align: left;
-  border: none; background: none; padding: 0;
+  border: 1.5px solid transparent; border-radius: calc(var(--radius) + 2px);
+  background: var(--white); padding: 0.5em 0.5em 0.7em;
+  transition: box-shadow 140ms, border-color 140ms, transform 140ms;
+}
+.item-card:hover {
+  box-shadow: 0 4px 18px rgba(0,0,0,0.10);
+  border-color: var(--line);
+  transform: translateY(-2px);
 }
 .item-photo {
   position: relative;
@@ -238,15 +293,17 @@ h1, h2, h3, p { margin: 0; }
   border-radius: var(--radius);
   background: var(--soft);
   display: grid; place-items: center;
-  margin-bottom: 0.6em;
+  margin-bottom: 0.55em;
+  overflow: hidden;
   transition: background 120ms;
 }
 .item-card:hover .item-photo { background: var(--soft-2); }
 .item-emoji { font-size: 3.6em; }
 .add-dot {
-  position: absolute; right: 0.6em; bottom: 0.6em;
+  position: absolute; right: 0.55em; bottom: 0.55em;
   width: 2em; height: 2em; border-radius: 50%;
-  background: var(--white); box-shadow: 0 0.15em 0.5em rgba(0, 0, 0, 0.15);
+  background: var(--brand-color, var(--red)); color: var(--white);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
   display: grid; place-items: center; font-weight: 700; font-size: 1.1em;
 }
 .item-name { font-weight: 700; font-size: 1.05em; }
@@ -604,4 +661,39 @@ h1, h2, h3, p { margin: 0; }
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   font-size: 1.9em; font-weight: 800; letter-spacing: 0.12em;
   color: var(--text); margin-bottom: 0.25em;
+}
+
+/* Venue logos on welcome screens */
+.venue-logo {
+  max-width: 240px;
+  max-height: 80px;
+  object-fit: contain;
+  margin-bottom: 1em;
+  filter: drop-shadow(0 2px 8px rgba(0,0,0,0.12));
+}
+
+/* Real food photos in menu item cards */
+.item-photo-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: var(--radius);
+}
+
+/* Real food photo in item detail modal */
+.modal-hero-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 1.2em 1.2em 0 0;
+}
+
+/* Real food photo thumbnail in cart */
+.line-photo-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 0.37em;
 }

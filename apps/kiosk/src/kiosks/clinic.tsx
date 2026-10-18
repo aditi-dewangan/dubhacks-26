@@ -1,4 +1,4 @@
-// Evergreen Family Clinic: patient check-in kiosk.
+// Seattle Children's: patient check-in kiosk.
 // welcome → identify (type last name + date of birth) → appointment → questions → review → complete
 
 import { create } from "zustand";
@@ -6,6 +6,7 @@ import type { ConnectionStatus } from "@kiosk-access/sdk";
 import { EMPTY_CART, type GenericKiosk } from "../generic.ts";
 import { brand } from "../kinds.ts";
 import { AccessCard } from "../ui.tsx";
+import imgChildrensLogo from "../assets/logos/seattle-childrens.png";
 
 type Screen = "welcome" | "identify" | "appointment" | "questions" | "review" | "complete";
 type Answer = "yes" | "no";
@@ -61,7 +62,6 @@ function Body({ qrUrl, status }: { qrUrl: string | null; status: ConnectionStatu
             <button className="btn-red start-btn" type="button" data-kiosk-id="btn-start" onClick={() => s.go("identify")}>
               Check in
             </button>
-            <div className="hero-foods" aria-hidden="true">🩺 📋 💙</div>
           </div>
           <AccessCard qrUrl={qrUrl} status={status} task={brand.task} />
         </section>

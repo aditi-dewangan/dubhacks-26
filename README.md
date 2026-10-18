@@ -4,6 +4,8 @@ Accessible ordering for touchscreen kiosks. A blind customer scans the kiosk's Q
 assistant on their own phone, and the kiosk taps through the order on screen. The build plan
 (roles, contract, timeline) lives in the team doc.
 
+Rendered at: https://kiosk-access-kiosk.onrender.com/ and https://www.allscreen.work/
+
 ## Quick start
 
 ```bash

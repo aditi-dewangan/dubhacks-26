@@ -13,7 +13,6 @@ import { enableVoiceFallback, releaseMic, unlockAudio } from "./voiceFallback.ts
 import { navigate } from "./nav.ts";
 import { permissionSteps, queryPermission, type Device } from "./permissions.ts";
 import { CAMERA_PROBLEM_TEXT, CameraError, startQrScanner, type CameraProblem } from "./qrScanner.ts";
-import { MENU_ITEMS } from "./menuData.ts";
 import imgAmcLogo       from "./assets/amc-logo.png";
 import imgAmtrakLogo    from "./assets/amtrak-logo.png";
 import imgChildrensLogo from "./assets/childrens-logo.jpg";
@@ -473,10 +472,6 @@ export function QrScannerScreen() {
         <a className="profile-link" href="/profile">My profile &amp; order history</a>
 
 
-        <div className="scanner-menu-preview">
-          <p className="scanner-menu-heading">Today&apos;s Menu</p>
-          <MenuCarousel compact />
-        </div>
 
 
       </div>
@@ -1307,7 +1302,7 @@ export function LoginPage({ onSubmit }: { onSubmit?(username: string): void }) {
       <div className="login-inner">
         <AppLogo />
         <h1 className="login-heading">Sign in</h1>
-        <p className="login-intro">Sign in to personalise your order and access saved preferences.</p>
+        <p className="login-intro">Sign in to personalize your order and access saved preferences.</p>
         <form className="login-form-card" onSubmit={handleSubmit} aria-label="Sign in form" noValidate>
           {error && (
             <div id={errorId} className="panel panel-error" role="alert" aria-live="assertive">
@@ -1491,26 +1486,6 @@ function ReaderIcon() {
   );
 }
 
-function MenuCarousel({ compact = false }: { compact?: boolean }) {
-  return (
-    <div className="menu-carousel-wrap">
-      {!compact && <p className="menu-carousel-label">Menu</p>}
-      <div className="menu-carousel" role="list" aria-label="Menu items">
-        {MENU_ITEMS.map(item => (
-          <div key={item.id} className="menu-card" role="listitem">
-            <img src={item.image} alt={item.name} className="menu-card-img" loading="lazy" />
-            <div className="menu-card-body">
-              <p className="menu-card-name">{item.name}</p>
-              <p className="menu-card-price">${item.price.toFixed(2)}</p>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-/** Food illustration used on the Start screen — swap for real photography later. */
 
 // ============================================================
 // AppLogo — used on splash-style screens (login, connecting,

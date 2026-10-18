@@ -2,6 +2,14 @@
 // store and the command executor all agree on names and numbers.
 
 import { menu, type MenuItem, type MenuOptionGroup } from "@kiosk-access/shared";
+import imgBoxCombo        from "./assets/menu/box_combo_new.avif";
+import img3Finger         from "./assets/menu/3finger_combo_new.avif";
+import imgCaniac          from "./assets/menu/caniac_combo.avif";
+import imgSandwich        from "./assets/menu/sandwich_combo_new.avif";
+import imgChickenFinger   from "./assets/menu/chicken-finger-medium0830.avif";
+import imgTailgate        from "./assets/menu/canestailgate-25.avif";
+import imgFries           from "./assets/menu/fries_recrop.avif";
+import imgSauce           from "./assets/menu/sauce-medium0830.avif";
 
 export const ids = {
   start: "btn-start",
@@ -86,9 +94,23 @@ const EMOJI: Record<string, string> = {
   fountain_drink: "🥤",
   combo_upgrade: "🍟",
 };
+
+const PHOTOS: Record<string, string> = {
+  box_combo:         imgBoxCombo,
+  three_finger_combo: img3Finger,
+  caniac_combo:      imgCaniac,
+  sandwich_combo:    imgSandwich,
+  chicken_sandwich:  imgSandwich,
+  chicken_finger:    imgChickenFinger,
+  tailgate:          imgTailgate,
+  fries:             imgFries,
+  canes_sauce:       imgSauce,
+};
+
 const CATEGORY_EMOJI: Record<string, string> = { combos: "🍱", chicken: "🍗", sides: "🍟", drinks: "🥤" };
 
-export const itemEmoji = (itemId: string) => EMOJI[itemId] ?? "🍽️";
+export const itemEmoji  = (itemId: string) => EMOJI[itemId] ?? "🍽️";
+export const itemPhoto  = (itemId: string): string | null => PHOTOS[itemId] ?? null;
 export const categoryEmoji = (categoryId: string) => CATEGORY_EMOJI[categoryId] ?? "🍽️";
 
 export function deltaLabel(delta: number) {

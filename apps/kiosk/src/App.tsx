@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import type { ConnectionStatus } from "@kiosk-access/sdk";
 import type { SessionEndReason, SessionInfo } from "@kiosk-access/shared";
+import imgRaisingCanes from "./assets/logos/raising-canes.png";
+import imgAmcLogo       from "./assets/logos/amc.png";
+import imgChildrensLogo from "./assets/logos/seattle-childrens.png";
+import imgLightRailLogo from "./assets/logos/lightrail.png";
 import { access } from "./connection.ts";
 import { currentState, runCommand } from "./executor.ts";
 import { Finger } from "./finger.tsx";
@@ -106,11 +110,15 @@ export function App() {
           </button>
         </div>
       )}
-      <header className="topbar">
+      <header className="topbar" style={{ "--brand-color": brand.color, "--brand-dark": brand.dark } as React.CSSProperties}>
         <div className="topbar-leading">
           <KioskNavigation sessionActive={sessionActive} />
           <div className="brand">
-            <span className="brand-mark" aria-hidden="true">{brand.mark}</span>
+            <img
+              src={{ food: imgRaisingCanes, cinema: imgAmcLogo, clinic: imgChildrensLogo, transit: imgLightRailLogo }[kind]}
+              alt={brand.name}
+              className="brand-logo"
+            />
             <span>
               <span className="brand-name">{brand.name}</span>
               <span className="brand-meta">{brand.meta}</span>
@@ -167,7 +175,6 @@ function FoodWelcome({ qrUrl, status }: { qrUrl: string | null; status: Connecti
         <button className="btn-red start-btn" data-kiosk-id={ids.start} type="button" onClick={start}>
           Start order
         </button>
-        <div className="hero-foods" aria-hidden="true">🍔 🍟 🥤 🍪</div>
       </div>
       <AccessCard qrUrl={qrUrl} status={status} task={brand.task} />
     </section>
