@@ -4,44 +4,44 @@ import { fixtures, menu } from "@kiosk-access/shared";
 import { buildSystemPrompt } from "./prompt.ts";
 import { validateActionForState, validateAddItemInput } from "./ordering.ts";
 
-test("missing required cheeseburger size gets real spoken choices and does not invent a default", () => {
-  const result = validateAddItemInput({ itemId: "cheeseburger", qty: 1, options: { remove: ["no_onions"] } });
-  assert.equal(result, "Size is required for Cheeseburger: Regular (ID regular) or Large (ID large). Do not choose a default. Ask the customer.");
+test("missing required box combo drink gets real spoken choices and does not invent a default", () => {
+  const result = validateAddItemInput({ itemId: "box_combo", qty: 1, options: { remove: ["no_coleslaw"] } });
+  assert.equal(result, "Drink is required for The Box Combo: Lemonade (ID lemonade) or Sweet tea (ID sweet_tea) or Unsweet tea (ID unsweet_tea) or Cola (ID cola). Do not choose a default. Ask the customer.");
 });
 
-test("a valid explicit size and optional removal pass preflight", () => {
+test("a valid explicit drink and optional removal pass preflight", () => {
   assert.equal(validateAddItemInput({
-    itemId: "cheeseburger", qty: 1, options: { size: ["large"], remove: ["no_onions"] },
+    itemId: "box_combo", qty: 1, options: { drink: ["sweet_tea"], remove: ["no_coleslaw"] },
   }), null);
 });
 
 test("an option ID from another item does not pass validation", () => {
   assert.match(validateAddItemInput({
-    itemId: "cheeseburger", qty: 1, options: { size: ["large"], spice: ["spicy"] },
+    itemId: "box_combo", qty: 1, options: { drink: ["sweet_tea"], spice: ["spicy"] },
   })!, /does not have a spice option/);
 });
 
 test("a choice from the wrong option group does not pass validation", () => {
   assert.match(validateAddItemInput({
-    itemId: "cheeseburger", qty: 1, options: { size: ["no_onions"] },
-  })!, /not a size choice/);
+    itemId: "box_combo", qty: 1, options: { drink: ["no_coleslaw"] },
+  })!, /not a drink choice/);
 });
 
 test("the same customization applies consistently to every item in a quantity", () => {
   assert.equal(validateAddItemInput({
-    itemId: "cheeseburger", qty: 2, options: { size: ["regular"], remove: ["no_onions"] },
+    itemId: "box_combo", qty: 2, options: { drink: ["lemonade"], remove: ["no_coleslaw"] },
   }), null);
   // Mixed preferences must be represented as distinct qty-one calls by the model.
   assert.match(buildSystemPrompt(menu, true), /separate add_item calls/);
-  assert.match(buildSystemPrompt(menu, true), /one with.*remove:\\?\["no_onions"\]/s);
+  assert.match(buildSystemPrompt(menu, true), /one with.*remove:\\?\["no_coleslaw"\]/s);
 });
 
 test("choice wording is generated from the current shared menu", () => {
   const item = structuredClone(menu);
-  item.items[0].optionGroups[0].choices[0].name = "Standard";
+  item.items.find((i) => i.id === "tailgate")!.name = "Party Platter";
   const prompt = buildSystemPrompt(item, true);
-  assert.match(prompt, /Standard/);
-  assert.doesNotMatch(prompt, /Regular \(ID regular\)/);
+  assert.match(prompt, /Party Platter/);
+  assert.doesNotMatch(prompt, /Tailgate \(25 Fingers\)/);
 });
 
 test("hidden combo upgrades cannot be added as standalone menu items", () => {
@@ -50,13 +50,13 @@ test("hidden combo upgrades cannot be added as standalone menu items", () => {
 
 test("quantities must be whole numbers from one to ten", () => {
   for (const qty of [0, -1, 1.5, 11, "2"]) {
-    assert.match(validateAddItemInput({ itemId: "water", qty, options: {} })!, /Quantity must be a whole number/);
+    assert.match(validateAddItemInput({ itemId: "texas_toast", qty, options: {} })!, /Quantity must be a whole number/);
   }
 });
 
 test("missing popup answer pauses an add and describes the current choices", () => {
   const result = validateActionForState("add_item", {
-    itemId: "water", qty: 1, options: {},
+    itemId: "texas_toast", qty: 1, options: {},
   }, fixtures.upsellState);
   assert.match(result!, /Not executed/);
   assert.match(result!, /\$2\.00 more/);
@@ -78,7 +78,7 @@ test("cart edits preserve omitted groups and reject stale IDs, invalid quantitie
   const state = structuredClone(fixtures.upsellState);
   delete state.popup;
   assert.equal(validateCartEdit("update_item", { lineId: "L1", options: { remove: [] } }, state), null);
-  assert.equal(validateCartEdit("update_item", { lineId: "L1", options: { size: ["regular"] } }, state), null);
+  assert.equal(validateCartEdit("update_item", { lineId: "L1", options: { remove: ["no_sauce"] } }, state), null);
   for (const input of [{ lineId: "missing", qty: 1 }, { lineId: "L1", qty: null },
     { lineId: "L1", qty: 0 }, { lineId: "L1" }, { lineId: "L1", options: {} },
     { lineId: "L1", options: { size: [] } }, { lineId: "L1", options: { size: ["small"] } }]) {
@@ -90,7 +90,7 @@ test("cart edits preserve omitted groups and reject stale IDs, invalid quantitie
 });
 
 test("duplicate modifiers and stale popup responses are rejected", () => {
-  assert.match(validateAddItemInput({ itemId: "cheeseburger", qty: 1,
-    options: { size: ["regular"], remove: ["no_cheese", "no_cheese"] } })!, /only once/);
+  assert.match(validateAddItemInput({ itemId: "box_combo", qty: 1,
+    options: { drink: ["lemonade"], remove: ["no_cheese", "no_cheese"] } })!, /only once/);
   assert.match(validateActionForState("respond_to_popup", { buttonId: "popup-yes" }, fixtures.menuState)!, /no current popup/);
 });

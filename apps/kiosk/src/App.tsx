@@ -21,6 +21,7 @@ import {
 } from "./Screens.tsx";
 import { useKiosk } from "./store.ts";
 import { AccessCard } from "./ui.tsx";
+import { afterPaint } from "./taps.ts";
 
 const END_REASONS: Record<SessionEndReason, string> = {
   idle_timeout: "Accessible session ended after inactivity",
@@ -82,7 +83,7 @@ export function App() {
     const publish = () => {
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => {
-        requestAnimationFrame(() => access.publishState(generic ? readScreen(generic, sessionActive) : currentState()));
+        afterPaint(() => access.publishState(generic ? readScreen(generic, sessionActive) : currentState()));
       }, 100);
     };
     publish();
@@ -131,7 +132,7 @@ export function App() {
   );
 }
 
-// ---------------- the food kiosk (Harbor Burger) ----------------
+// ---------------- the food kiosk (Raising Cane's) ----------------
 
 function FoodBody({ qrUrl, status, sessionActive }: { qrUrl: string | null; status: ConnectionStatus; sessionActive: boolean }) {
   const screen = useKiosk((s) => s.screen);
@@ -156,9 +157,9 @@ function FoodWelcome({ qrUrl, status }: { qrUrl: string | null; status: Connecti
   return (
     <section className="welcome">
       <div className="welcome-hero">
-        <p className="eyebrow">Welcome to Harbor Burger</p>
+        <p className="eyebrow">Welcome to Raising Cane&apos;s</p>
         <h1>Skip the line.<br />Order here.</h1>
-        <p className="welcome-sub">Burgers, fries and shakes, made fresh when you order.</p>
+        <p className="welcome-sub">Chicken fingers, crinkle-cut fries and Cane&apos;s sauce, made fresh when you order.</p>
         <button className="btn-red start-btn" data-kiosk-id={ids.start} type="button" onClick={start}>
           Start order
         </button>

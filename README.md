@@ -27,7 +27,7 @@ kiosk animates the taps and the response is its ack:
 
 ```bash
 curl -XPOST localhost:3001/api/dev/command/store42-kiosk1 -H 'content-type: application/json' \
-  -d '{"command":{"type":"add_item","itemId":"cheeseburger","qty":1,"options":{"size":["large"],"remove":["no_onions"]}}}'
+  -d '{"command":{"type":"add_item","itemId":"box_combo","qty":1,"options":{"drink":["lemonade"],"remove":["no_coleslaw"]}}}'
 ```
 
 Kiosk command rules the Bridge and Agent can rely on:
@@ -36,7 +36,7 @@ Kiosk command rules the Bridge and Agent can rely on:
 - Any command except a popup answer is refused while a popup is showing.
 - `press` on `btn-pay` or `btn-card-tap` is always refused. Only `start_payment` reaches payment.
 - Nothing can change once the kiosk is on the paying or complete screen.
-- Removing a burger also removes its combo upgrade line.
+- Removing a sandwich or chicken finger also removes its combo upgrade line.
 
 Phones need HTTPS for the microphone. During development, expose the phone app with
 `ngrok http 5174` and set `PHONE_APP_URL` to the ngrok URL so the QR code points there.
@@ -98,7 +98,7 @@ The same kiosk app runs four different kiosks to show the integration works on a
 
 | URL | Kiosk | Kiosk id |
 | --- | --- | --- |
-| `/` | Harbor Burger (food ordering) | `store42-kiosk1` (`VITE_KIOSK_ID`) |
+| `/` | Raising Cane's (food ordering) | `store42-kiosk1` (`VITE_KIOSK_ID`) |
 | `/?kind=clinic` | Evergreen Family Clinic (patient check-in) | `clinic-kiosk1` |
 | `/?kind=cinema` | Starlight Cinemas (movie tickets and seats) | `cinema-kiosk1` |
 | `/?kind=transit` | MetroLink (train ticket machine) | `transit-kiosk1` |

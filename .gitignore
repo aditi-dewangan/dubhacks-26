@@ -5,3 +5,5 @@ dist/
 *.log
 events.jsonl
 .DS_Store
+profiles.json
+profiles.json.tmp

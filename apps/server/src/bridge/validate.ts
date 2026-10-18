@@ -10,6 +10,15 @@ const ok = <T>(value: T): Result<T> => ({ ok: true, value });
 const fail = <T>(error: string): Result<T> => ({ ok: false, error });
 
 const visible = menu.items.filter((i) => !i.hidden);
+
+/** "the box combo" → "box combo", so sentences don't say "the the box combo". */
+const noun = (name: string) => name.toLowerCase().replace(/^the /, "");
+
+/** "a chicken sandwich or chicken finger": whatever offers this hidden item in its popup. */
+function offeredAfter(hiddenId: string): string {
+  const offers = visible.filter((i) => i.upsell?.itemId === hiddenId).map((i) => noun(i.name));
+  return offers.length ? `a ${orList(offers)}` : "another item";
+}
 const itemsById = new Map(menu.items.map((i) => [i.id, i]));
 
 // ---------------- text matching ----------------
@@ -81,49 +90,62 @@ const andList = (words: string[]) => joinList(words, "and");
 type Alias = { itemId: string; options?: Options } | { categoryId: string };
 
 const ALIASES: Record<string, Alias> = {
-  coke: { itemId: "soda", options: { flavor: ["cola"] } },
-  cola: { itemId: "soda", options: { flavor: ["cola"] } },
-  pepsi: { itemId: "soda", options: { flavor: ["cola"] } },
-  "diet coke": { itemId: "soda", options: { flavor: ["diet_cola"] } },
-  "diet cola": { itemId: "soda", options: { flavor: ["diet_cola"] } },
-  "diet pepsi": { itemId: "soda", options: { flavor: ["diet_cola"] } },
-  sprite: { itemId: "soda", options: { flavor: ["lemon_lime"] } },
-  "7up": { itemId: "soda", options: { flavor: ["lemon_lime"] } },
-  "lemon lime": { itemId: "soda", options: { flavor: ["lemon_lime"] } },
-  "root beer": { itemId: "soda", options: { flavor: ["root_beer"] } },
-  soda: { itemId: "soda" },
-  pop: { itemId: "soda" },
-  "soft drink": { itemId: "soda" },
-  "fountain drink": { itemId: "soda" },
-  fries: { itemId: "fries" },
+  // Combos
+  box: { itemId: "box_combo" },
+  "the box": { itemId: "box_combo" },
+  "box combo": { itemId: "box_combo" },
+  caniac: { itemId: "caniac_combo" },
+  "caniac combo": { itemId: "caniac_combo" },
+  "3 finger": { itemId: "three_finger_combo" },
+  "three finger": { itemId: "three_finger_combo" },
+  "3 finger combo": { itemId: "three_finger_combo" },
+  "three finger combo": { itemId: "three_finger_combo" },
+  "sandwich combo": { itemId: "sandwich_combo" },
+  // Chicken
+  sandwich: { itemId: "chicken_sandwich" },
+  finger: { itemId: "chicken_finger" },
+  "chicken finger": { itemId: "chicken_finger" },
+  tender: { itemId: "chicken_finger" },
+  "chicken tender": { itemId: "chicken_finger" },
+  strip: { itemId: "chicken_finger" },
+  "chicken strip": { itemId: "chicken_finger" },
+  "party pack": { itemId: "tailgate" },
+  // Sides
   "french fry": { itemId: "fries" },
+  "french fries": { itemId: "fries" },
+  "crinkle fries": { itemId: "fries" },
   chips: { itemId: "fries" },
-  rings: { itemId: "onion_rings" },
-  nuggets: { itemId: "nuggets" },
-  "chicken nuggets": { itemId: "nuggets" },
-  shake: { itemId: "vanilla_shake" },
-  milkshake: { itemId: "vanilla_shake" },
-  tea: { itemId: "iced_tea" },
-  "sweet tea": { itemId: "iced_tea", options: { sweet: ["sweetened"] } },
-  "unsweet tea": { itemId: "iced_tea", options: { sweet: ["unsweetened"] } },
-  "unsweetened tea": { itemId: "iced_tea", options: { sweet: ["unsweetened"] } },
-  "chicken sandwich": { itemId: "crispy_chicken_sandwich" },
-  "spicy chicken sandwich": { itemId: "crispy_chicken_sandwich", options: { spice: ["spicy"] } },
-  "veggie burger": { itemId: "veggie_burger" },
-  "vegetarian burger": { itemId: "veggie_burger" },
-  "vegan burger": { itemId: "veggie_burger" },
-  "plant based burger": { itemId: "veggie_burger" },
-  double: { itemId: "double_cheeseburger" },
-  combo: { itemId: "combo_upgrade" },
-  meal: { itemId: "combo_upgrade" },
-  burger: { categoryId: "burgers" },
-  hamburger: { categoryId: "burgers" },
-  sandwich: { categoryId: "burgers" },
+  slaw: { itemId: "coleslaw" },
+  "cole slaw": { itemId: "coleslaw" },
+  toast: { itemId: "texas_toast" },
+  sauce: { itemId: "canes_sauce" },
+  "canes sauce": { itemId: "canes_sauce" },
+  // Drinks
+  "sweet tea": { itemId: "sweet_tea", options: { sweet: ["sweetened"] } },
+  "unsweet tea": { itemId: "sweet_tea", options: { sweet: ["unsweetened"] } },
+  "unsweetened tea": { itemId: "sweet_tea", options: { sweet: ["unsweetened"] } },
+  tea: { itemId: "sweet_tea" },
+  coke: { itemId: "fountain_drink", options: { flavor: ["cola"] } },
+  cola: { itemId: "fountain_drink", options: { flavor: ["cola"] } },
+  pepsi: { itemId: "fountain_drink", options: { flavor: ["cola"] } },
+  "diet coke": { itemId: "fountain_drink", options: { flavor: ["diet_cola"] } },
+  "diet cola": { itemId: "fountain_drink", options: { flavor: ["diet_cola"] } },
+  sprite: { itemId: "fountain_drink", options: { flavor: ["lemon_lime"] } },
+  "7up": { itemId: "fountain_drink", options: { flavor: ["lemon_lime"] } },
+  "lemon lime": { itemId: "fountain_drink", options: { flavor: ["lemon_lime"] } },
+  "root beer": { itemId: "fountain_drink", options: { flavor: ["root_beer"] } },
+  soda: { itemId: "fountain_drink" },
+  pop: { itemId: "fountain_drink" },
+  "soft drink": { itemId: "fountain_drink" },
+  // The combo upgrade is only offered in a popup
+  upgrade: { itemId: "combo_upgrade" },
+  "combo upgrade": { itemId: "combo_upgrade" },
+  // Categories
+  combo: { categoryId: "combos" },
+  meal: { categoryId: "combos" },
   side: { categoryId: "sides" },
   drink: { categoryId: "drinks" },
   beverage: { categoryId: "drinks" },
-  dessert: { categoryId: "desserts" },
-  sweet: { categoryId: "desserts" },
 };
 
 function lookupAlias(query: string): Alias | undefined {
@@ -212,7 +234,7 @@ export function resolveOrderableItem(query: unknown): Result<{ item: MenuItem; p
       : `No item "${query}" on this menu.`);
   }
   if (m.item.hidden) {
-    return fail(`The ${m.item.name.toLowerCase()} can't be ordered directly. It's offered in a popup after adding a burger.`);
+    return fail(`The ${noun(m.item.name)} can't be ordered directly. It's offered in a popup after adding ${offeredAfter(m.item.id)}.`);
   }
   return ok({ item: m.item, presetOptions: m.presetOptions });
 }
@@ -257,7 +279,7 @@ export function validateOptions(item: MenuItem, raw: unknown, requireAll: boolea
   if (typeof raw !== "object" || Array.isArray(raw)) {
     return fail(`Options must map option names to choices, like { "size": ["large"] }.`);
   }
-  const itemName = item.name.toLowerCase();
+  const itemName = noun(item.name);
   const out: Options = {};
   for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
     const group = findGroup(item, key);

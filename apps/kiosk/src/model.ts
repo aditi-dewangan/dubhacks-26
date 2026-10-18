@@ -70,21 +70,23 @@ export function describeOptions(item: MenuItem, options: Options): string {
 }
 
 const EMOJI: Record<string, string> = {
-  cheeseburger: "🍔",
-  double_cheeseburger: "🍔",
-  crispy_chicken_sandwich: "🍗",
-  veggie_burger: "🥬",
+  box_combo: "🍱",
+  three_finger_combo: "🍗",
+  caniac_combo: "🍗",
+  sandwich_combo: "🥪",
+  chicken_sandwich: "🥪",
+  chicken_finger: "🍗",
+  tailgate: "🎉",
   fries: "🍟",
-  onion_rings: "🧅",
-  nuggets: "🍗",
-  soda: "🥤",
-  iced_tea: "🧊",
-  water: "💧",
-  vanilla_shake: "🥛",
-  cookie: "🍪",
+  coleslaw: "🥗",
+  texas_toast: "🍞",
+  canes_sauce: "🥫",
+  lemonade: "🍋",
+  sweet_tea: "🧋",
+  fountain_drink: "🥤",
   combo_upgrade: "🍟",
 };
-const CATEGORY_EMOJI: Record<string, string> = { burgers: "🍔", sides: "🍟", drinks: "🥤", desserts: "🍪" };
+const CATEGORY_EMOJI: Record<string, string> = { combos: "🍱", chicken: "🍗", sides: "🍟", drinks: "🥤" };
 
 export const itemEmoji = (itemId: string) => EMOJI[itemId] ?? "🍽️";
 export const categoryEmoji = (categoryId: string) => CATEGORY_EMOJI[categoryId] ?? "🍽️";

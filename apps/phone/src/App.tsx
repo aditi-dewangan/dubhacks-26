@@ -1,33 +1,30 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { normalizeCode } from "@kiosk-access/shared";
 import type { Cart, CartLine, KioskState, SessionEndReason } from "@kiosk-access/shared";
-import { connectSocket, createSession, parseParams } from "./connection.ts";
+import { attachProfile, connectSocket, createSession, deleteProfile, fetchProfile, parseParams, updateProfile, type PhoneProfile } from "./connection.ts";
 import type { PhoneSocket } from "./connection.ts";
 import type { ChatMessage } from "./store.ts";
 import { usePhone } from "./store.ts";
+import { createAgentVoice } from "./agentSpeech.ts";
+import { bindVoiceSocket } from "./voiceSocket.ts";
+import { greeting, kioskKind, placeName, placeNameForKind, wantsToStart, WELCOME, type Kind } from "./greeting.ts";
+import { speechSupport } from "./speech.ts";
+import { enableVoiceFallback, prepareMic, releaseMic, unlockAudio } from "./voiceFallback.ts";
+import { navigate } from "./nav.ts";
+import { iosNonSafari, permissionSteps, queryPermission, type Device } from "./permissions.ts";
+import { CAMERA_PROBLEM_TEXT, CameraError, startQrScanner, type CameraProblem } from "./qrScanner.ts";
+import { MENU_ITEMS } from "./menuData.ts";
 
 let _id = 0;
 const uid = () => String(++_id);
 
-// Detect TTS support once (stable across renders)
-const hasTTS = typeof window !== "undefined" && "speechSynthesis" in window;
-
-// Minimal SpeechRecognition interface — avoids DOM lib dependency
-interface ISpeechRec {
-  continuous: boolean;
-  interimResults: boolean;
-  lang: string;
-  onstart: ((ev: Event) => void) | null;
-  onresult: ((ev: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
-  onerror: ((ev: { error: string }) => void) | null;
-  onend: ((ev: Event) => void) | null;
-  start(): void;
-  stop(): void;
+/** Keeps this phone's saved profile, and uses its speaking speed for spoken replies. */
+function applyProfile(p: PhoneProfile) {
+  const store = usePhone.getState();
+  store.setProfile(p);
+  const rate = p.preferences?.speechRate;
+  if (rate && rate !== store.speechRate) store.setSpeechRate(rate);
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const SpeechRecAPI: (new () => ISpeechRec) | undefined = typeof window !== "undefined"
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ? ((window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition)
-  : undefined;
 
 // ---- End / error display data ----
 
@@ -48,6 +45,8 @@ const ERROR_INFO: Record<string, ErrorInfo> = {
   kiosk_offline:  { heading: "Kiosk is offline",       body: "This kiosk is currently offline.",                    recovery: "Ask a staff member for help.",                       canRetry: false },
   connect_failed: { heading: "Connection failed",      body: "Could not reach the server.",                         recovery: "Check your internet connection and try again.",      canRetry: true  },
   bad_url:        { heading: "Link not recognised",    body: "This link does not contain a valid connection code.", recovery: "Tap the kiosk tag again for a fresh link.",          canRetry: false },
+  code_not_found: { heading: "Code not found",         body: "We couldn't find a kiosk with that code.",           recovery: "Check the code on the kiosk and try again. Codes look like FD12345.", canRetry: false },
+  too_many_attempts: { heading: "Too many tries",      body: "Too many wrong codes were entered.",                  recovery: "Wait a few minutes, then try again or ask staff for help.", canRetry: false },
   unknown:        { heading: "Something went wrong",   body: "An unexpected error occurred.",                       recovery: "Try tapping the kiosk tag again, or ask for help.", canRetry: false },
 };
 
@@ -63,38 +62,27 @@ export function App() {
   const endReason          = usePhone(s => s.endReason);
   const awaitingConfirmation = usePhone(s => s.awaitingConfirmation);
   const kioskState         = usePhone(s => s.kioskState);
+  const kioskId            = usePhone(s => s.kioskId);
   const orderingStarted    = usePhone(s => s.orderingStarted);
   const speechRate         = usePhone(s => s.speechRate);
 
   const socketRef          = useRef<PhoneSocket | null>(null);
+  const voiceRef           = useRef<ReturnType<typeof createAgentVoice> | null>(null);
   const [agentThinking, setAgentThinking] = useState(false);
   const [agentSpeaking, setAgentSpeaking] = useState(false);
+  const [voiceListening, setVoiceListening] = useState(false);
+  // Welcome screen: the assistant asks "Do you want to start ordering?" before the chat opens.
+  const [welcome, setWelcome] = useState<WelcomeStatus>("idle");
   const [settingsOpen,  setSettingsOpen]  = useState(false);
   const [cartReviewOpen, setCartReviewOpen] = useState(false);
-  // Screen-reader announcement when TTS is unavailable
-  const [srAnnounce, setSrAnnounce] = useState("");
+  const [permissionHelp, setPermissionHelp] = useState<Device | null>(null);
+  // Mic not allowed yet: wait for the Start tap so the browser's prompt comes with a reason.
+  const [micNeedsTap, setMicNeedsTap] = useState(false);
+  const askToStartRef = useRef<(auto?: boolean) => void>(() => {});
 
-  // Stable refs so TTS closure always reads current values
-  const setAgentSpeakingRef = useRef(setAgentSpeaking);
-  setAgentSpeakingRef.current = setAgentSpeaking;
+  // Keep speech rate accessible to agentVoice without re-creating it on every render
   const speechRateRef = useRef(speechRate);
   speechRateRef.current = speechRate;
-
-  // TTS: speak via Web Speech API; fall back to ARIA live region only when unavailable.
-  // This prevents the page's aria-live from overlapping with speechSynthesis audio.
-  const tts = useCallback((text: string) => {
-    if (hasTTS) {
-      window.speechSynthesis.cancel();
-      const u = new SpeechSynthesisUtterance(text);
-      u.rate = speechRateRef.current;
-      setAgentSpeakingRef.current(true);
-      u.onend   = () => setAgentSpeakingRef.current(false);
-      u.onerror = () => setAgentSpeakingRef.current(false);
-      window.speechSynthesis.speak(u);
-    } else {
-      setSrAnnounce(text);
-    }
-  }, []);
 
   // Connection — runs once; no StrictMode (single-use token)
   useEffect(() => {
@@ -105,34 +93,79 @@ export function App() {
 
     let cancelled = false;
     let socket: PhoneSocket | null = null;
+    let unbindVoice: (() => void) | null = null;
+    let disableVoiceFallback: (() => void) | null = null;
 
     (async () => {
       try {
-        const sess = await createSession(params.kioskId, params.token);
+        const sess = await createSession(params);
+        store.setKioskId(sess.kioskId);
         if (cancelled) return;
         socket = connectSocket(sess.sessionId, sess.sessionSecret);
         socketRef.current = socket;
+        // If the browser can't do speech-to-text (Chrome on iPhone), record and let the server transcribe.
+        disableVoiceFallback = enableVoiceFallback(sess.sessionId, sess.sessionSecret);
+        // Recognise a returning customer (no login screen). Ordering doesn't wait for it.
+        void attachProfile(sess.sessionId, sess.sessionSecret).then(p => { if (p && !cancelled) applyProfile(p); });
+
+        // Voice controller: sendText callback emits to server and updates store.
+        // showTranscript is a no-op — sendText adds the bubble; we avoid duplicates.
+        const voice = createAgentVoice({
+          sendText: (text) => {
+            if (!socketRef.current) return;
+            socketRef.current.emit("user:message", { text });
+            usePhone.getState().pushMessage({ id: uid(), role: "user", text, awaitingConfirmation: false });
+            usePhone.getState().setAwaitingConfirmation(false);
+            setAgentThinking(true);
+          },
+          showTranscript: (_text) => { /* sendText adds the bubble */ },
+          // Voice problems ("Tap the microphone to answer") appear in the chat, so they're seen and announced.
+          showStatus: (msg) => {
+            // Don't repeat the same notice over and over.
+            const last = usePhone.getState().messages.at(-1);
+            if (last?.role === "agent" && last.text === msg) return;
+            usePhone.getState().pushMessage({ id: uid(), role: "agent", text: msg, awaitingConfirmation: false });
+          },
+          permissionDenied: () => setPermissionHelp("microphone"),
+          setSpeaking: (v) => setAgentSpeaking(v),
+          setListening: (v) => setVoiceListening(v),
+        }, () => speechRateRef.current);
+        voiceRef.current = voice;
+
+        // bindVoiceSocket wires agent:message → TTS, kiosk:state → order-complete TTS,
+        // session:ended → stop speech. These run in addition to the store-update handlers below.
+        unbindVoice = bindVoiceSocket(socket as unknown as Parameters<typeof bindVoiceSocket>[0], voice);
 
         socket.on("connect", () => {
           if (cancelled) return;
           store.setPhase("active");
-          tts("Connected to kiosk. Tap Start voice ordering to begin.");
+          // Voice ordering turns itself on (greet, then listen) when the mic is already allowed.
+          // Otherwise wait for a tap: a surprise mic prompt on page load looks broken, and iPhones
+          // keep the greeting silent until a tap anyway. Chrome on iPhone asks again on every visit.
+          if (!usePhone.getState().orderingStarted && speechSupport().recognition) {
+            void queryPermission("microphone").then((mic) => {
+              if (cancelled || usePhone.getState().orderingStarted) return;
+              if (mic === "prompt" || (mic !== "granted" && iosNonSafari())) { setMicNeedsTap(true); return; }
+              askToStartRef.current(true);
+            });
+          }
         });
         socket.on("connect_error", e => {
           if (!cancelled) store.setError("connect_failed", e.message);
         });
         socket.on("kiosk:state", state => store.setKioskState(state));
+        // The customer may have just asked to be remembered ("speak slower"): pick up the change.
+        socket.on("agent:message", () => { void fetchProfile().then(p => { if (p && !cancelled) applyProfile(p); }); });
         socket.on("agent:message", msg => {
           setAgentThinking(false);
           store.setAwaitingConfirmation(msg.awaitingConfirmation);
           store.pushMessage({ id: uid(), role: "agent", text: msg.text, awaitingConfirmation: msg.awaitingConfirmation });
-          tts(msg.text);
-          // If agent responds before user has tapped Start, move to conversation
+          // If agent responds before user tapped Start, jump straight to conversation
           if (!usePhone.getState().orderingStarted) store.setOrderingStarted(true);
         });
         socket.on("session:ended", info => {
+          releaseMic();
           store.setEnded(info.reason ?? null);
-          if (hasTTS) window.speechSynthesis.cancel();
           socket!.disconnect();
         });
       } catch (err: unknown) {
@@ -145,21 +178,20 @@ export function App() {
 
     return () => {
       cancelled = true;
+      unbindVoice?.();
+      disableVoiceFallback?.();
+      voiceRef.current?.dispose();
+      voiceRef.current = null;
       socket?.disconnect();
       socketRef.current = null;
     };
-  }, [tts]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Actions
   const sendText = useCallback((text: string) => {
     const trimmed = text.trim();
-    if (!socketRef.current || !trimmed) return;
-    socketRef.current.emit("user:message", { text: trimmed });
-    usePhone.getState().pushMessage({ id: uid(), role: "user", text: trimmed, awaitingConfirmation: false });
-    usePhone.getState().setAwaitingConfirmation(false);
-    setAgentThinking(true);
-    setAgentSpeaking(false);
-    if (hasTTS) window.speechSynthesis.cancel();
+    if (!trimmed) return;
+    voiceRef.current?.sendTyped(trimmed);
   }, []);
 
   const sendConfirm = useCallback((confirmed: boolean) => {
@@ -175,13 +207,76 @@ export function App() {
   const repeatLastMessage = useCallback(() => {
     const msgs = usePhone.getState().messages;
     const last = [...msgs].reverse().find(m => m.role === "agent");
-    if (last) tts(last.text);
-  }, [tts]);
+    if (last) voiceRef.current?.speakFeedback(last.text);
+  }, []);
 
-  const startOrdering = useCallback((withVoice: boolean) => {
-    usePhone.getState().setOrderingStarted(true);
-    if (withVoice) tts("Ready. Tap the microphone button and tell me what you'd like.");
-  }, [tts]);
+  // Opens the chat. With voice, the greeting is spoken and the mic then reopens by itself after every reply.
+  // auto: started without a tap (iPhones may keep the greeting silent until the first touch).
+  const enterChat = useCallback((withVoice: boolean, auto = false) => {
+    const store = usePhone.getState();
+    store.setOrderingStarted(true);
+    const hello = greeting(store.kioskState, store.profile, store.kioskId);
+    store.pushMessage({ id: uid(), role: "agent", text: hello, awaitingConfirmation: false });
+    if (withVoice) {
+      unlockAudio(); // iPhones only allow recording audio after a tap
+      voiceRef.current?.setEnabled(true, { handsFree: true });
+      void voiceRef.current?.greet(hello, { auto });
+    }
+  }, []);
+
+  // The first touch anywhere lets iPhones play speech and record (they block both until a tap).
+  useEffect(() => {
+    // ...and plays anything the phone couldn't say before that touch.
+    const unlock = () => { unlockAudio(); voiceRef.current?.replaySilent(); };
+    document.addEventListener("pointerdown", unlock, { once: true });
+    return () => document.removeEventListener("pointerdown", unlock);
+  }, []);
+
+  // The customer's first tap on the welcome screen (browsers only allow speech after a tap):
+  // the assistant asks whether to start, and a yes opens the chat.
+  // auto: runs by itself right after connecting, so the mic turns on without a tap.
+  const askToStart = useCallback(async (auto = false) => {
+    const voice = voiceRef.current;
+    if (!voice) { enterChat(false); return; }
+    setMicNeedsTap(false);
+    unlockAudio();
+    // Ask for the mic now. Already blocked: show how to turn it on instead of listening.
+    const mic = await queryPermission("microphone");
+    if (mic === "denied" || (iosNonSafari() && (await prepareMic()) === "denied")) {
+      setPermissionHelp("microphone");
+      return;
+    }
+    voice.setEnabled(true);
+    setWelcome("asking");
+    const now = usePhone.getState();
+    const answer = await voice.ask(`Welcome to ${placeName(now.kioskState, now.kioskId)}. ${WELCOME[kioskKind(now.kioskState, now.kioskId)].question}`, { auto });
+    if (answer && wantsToStart(answer)) { setWelcome("idle"); enterChat(true, auto); return; }
+    setWelcome(answer ? "declined" : "unheard");
+    if (answer) void voice.speakFeedback("Okay. Tap the start button whenever you're ready.");
+  }, [enterChat]);
+  askToStartRef.current = (auto) => { void askToStart(auto); };
+
+  // Stop the conversation loop on screens where voice ordering doesn't apply (Nidhi).
+  useEffect(() => {
+    const ks = kioskState?.screen;
+    if (ks === "paying" || ks === "complete") {
+      voiceRef.current?.setEnabled(false);
+    }
+  }, [kioskState?.screen]);
+
+  const micHelp = permissionHelp && (
+    <PermissionHelpSheet
+      device={permissionHelp}
+      onClose={() => setPermissionHelp(null)}
+      onRetry={() => {
+        setPermissionHelp(null);
+        unlockAudio();
+        if (!usePhone.getState().orderingStarted) { void askToStart(); return; }
+        voiceRef.current?.setEnabled(true, { handsFree: true });
+        void voiceRef.current?.listenAndSend();
+      }}
+    />
+  );
 
   // ---- Screen routing ----
   if (phase === "init") return null;
@@ -197,35 +292,46 @@ export function App() {
 
   // phase === "active" — sub-screens by priority
   const ks = kioskState?.screen;
-  if (ks === "paying")   return <PayAtReaderScreen kioskState={kioskState!} onEnd={endSession} />;
+  if (ks === "paying")   return <PayAtReaderScreen kioskState={kioskState!} onEnd={endSession} onRepeat={() => {
+    const total = kioskState!.cart?.total;
+    const text = `Please pay at the kiosk reader${total != null ? `, total $${total.toFixed(2)}` : ""}.`;
+    voiceRef.current?.speakFeedback(text);
+  }} />;
   if (ks === "complete") return <OrderCompleteScreen kioskState={kioskState} />;
   if (awaitingConfirmation) return <ConfirmOrderScreen cart={kioskState?.cart ?? null} onConfirm={sendConfirm} />;
   if (!orderingStarted) return (
-    <StartScreen
-      kioskId={kioskState?.kioskId ?? ""}
-      onStartVoice={() => startOrdering(true)}
-      onStartText={() => startOrdering(false)}
-    />
+    <>
+      <StartScreen
+        place={placeName(kioskState, kioskId)}
+        kind={kioskKind(kioskState, kioskId)}
+        status={voiceListening ? "listening" : agentSpeaking ? "asking" : welcome}
+        micNeedsTap={micNeedsTap}
+        onStartVoice={() => { void askToStart(); }}
+        onStartText={() => enterChat(false)}
+        onProfile={() => setSettingsOpen(true)}
+      />
+      {settingsOpen && <SettingsSheet onClose={() => setSettingsOpen(false)} />}
+      {micHelp}
+    </>
   );
 
   return (
     <>
-      {/* Announcement region: used only when TTS unavailable so screen reader hears agent messages */}
-      <div role="status" aria-live="polite" aria-atomic="true" className="sr-only">
-        {srAnnounce}
-      </div>
       <ConversationScreen
         messages={messages}
         kioskState={kioskState}
         agentThinking={agentThinking}
         agentSpeaking={agentSpeaking}
+        voiceListening={voiceListening}
         onSend={sendText}
+        onMicPress={() => { unlockAudio(); void voiceRef.current?.listenAndSend(); }}
         onEnd={endSession}
         onSettings={() => setSettingsOpen(true)}
         onRepeat={repeatLastMessage}
         onCartReview={() => setCartReviewOpen(true)}
       />
       {settingsOpen && <SettingsSheet onClose={() => setSettingsOpen(false)} />}
+      {micHelp}
       {cartReviewOpen && kioskState?.cart && (
         <CartReviewSheet cart={kioskState.cart} onClose={() => setCartReviewOpen(false)} />
       )}
@@ -237,15 +343,11 @@ export function App() {
 // QrScannerScreen
 // ============================================================
 
-// BarcodeDetector is not in TypeScript's lib.dom yet — minimal inline type.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const BarcodeDetectorAPI: (new (opts: { formats: string[] }) => { detect(src: HTMLVideoElement): Promise<{ rawValue: string }[]> }) | undefined
-  = typeof window !== "undefined" ? (window as unknown as Record<string, unknown>).BarcodeDetector as never : undefined;
-
 /** Parse a full QR URL and extract the relative path + params we need. */
 function parseQrUrl(raw: string): string | null {
   try {
     const url = new URL(raw);
+    if (/^\/c\/[A-Za-z0-9]+$/.test(url.pathname)) return url.pathname; // kiosk code link
     const match = url.pathname.match(/^\/k\/([^/?#]+)/);
     const token = url.searchParams.get("t");
     if (!match?.[1] || !token) return null;
@@ -255,66 +357,65 @@ function parseQrUrl(raw: string): string | null {
   }
 }
 
-function QrScannerScreen() {
+export function QrScannerScreen() {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const [cameraError, setCameraError] = useState("");
+  const stopRef = useRef<(() => void) | null>(null);
+  const [camera, setCamera] = useState<"starting" | "on" | CameraProblem>("starting");
+  const [helpOpen, setHelpOpen] = useState(false);
   const [found, setFound] = useState(false);
-  const [manualUrl, setManualUrl] = useState("");
-  const supported = Boolean(BarcodeDetectorAPI);
+  const [codeInput, setCodeInput] = useState("");
+  const [codeError, setCodeError] = useState("");
+
+  const startCamera = useCallback(async () => {
+    if (!videoRef.current) return;
+    stopRef.current?.();
+    setCamera("starting");
+    try {
+      stopRef.current = await startQrScanner(videoRef.current, (text) => {
+        const path = parseQrUrl(text);
+        if (!path) return false; // some other QR code, keep scanning
+        setFound(true);
+        navigator.vibrate?.(60);
+        navigate(path); // no reload, so the mic isn't asked for again
+        return true;
+      });
+      setCamera("on");
+    } catch (err) {
+      const problem = err instanceof CameraError ? err.problem : "failed";
+      setCamera(problem);
+      if (problem === "denied") setHelpOpen(true);
+    }
+  }, []);
 
   useEffect(() => {
-    if (!supported || !videoRef.current) return;
-    let stopped = false;
-    let stream: MediaStream | null = null;
-    let rafId = 0;
-    const detector = new BarcodeDetectorAPI!({ formats: ["qr_code"] });
+    let alive = true;
+    // Open the camera automatically. Already allowed: it just shows. Not asked yet: the browser asks.
+    // Blocked: don't bother the browser, show how to turn it on.
+    void queryPermission("camera").then((status) => {
+      if (!alive) return;
+      if (status === "denied") { setCamera("denied"); setHelpOpen(true); }
+      else void startCamera();
+    });
+    return () => { alive = false; stopRef.current?.(); stopRef.current = null; };
+  }, [startCamera]);
 
-    const scan = async () => {
-      if (stopped || !videoRef.current) return;
-      try {
-        const results = await detector.detect(videoRef.current);
-        for (const r of results) {
-          const path = parseQrUrl(r.rawValue);
-          if (path) {
-            stopped = true;
-            setFound(true);
-            stream?.getTracks().forEach(t => t.stop());
-            window.location.href = path;
-            return;
-          }
-        }
-      } catch { /* frame not ready yet */ }
-      rafId = requestAnimationFrame(scan);
-    };
+  const cameraProblem = camera !== "starting" && camera !== "on" ? camera : null;
+  const canRetry = cameraProblem && cameraProblem !== "insecure" && cameraProblem !== "unsupported" && cameraProblem !== "not_found";
 
-    (async () => {
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } } });
-        if (stopped) { stream.getTracks().forEach(t => t.stop()); return; }
-        videoRef.current!.srcObject = stream;
-        await videoRef.current!.play();
-        scan();
-      } catch {
-        setCameraError("Could not access the camera. Allow camera access in your browser settings and try again.");
-      }
-    })();
-
-    return () => {
-      stopped = true;
-      cancelAnimationFrame(rafId);
-      stream?.getTracks().forEach(t => t.stop());
-    };
-  }, [supported]);
-
-  const submitManual = () => {
-    const path = parseQrUrl(manualUrl.trim());
-    if (path) { window.location.href = path; }
-    else setCameraError("That URL doesn't look like a valid kiosk link. Try scanning again.");
+  // Kiosk codes: FD (food), CN (cinema), TR (transit), HP (hospital) + 5 digits, e.g. FD48213.
+  const submitCode = () => {
+    const code = normalizeCode(codeInput);
+    if (!code) {
+      setCodeError("Codes are two letters and five numbers, like FD12345.");
+      return;
+    }
+    setCodeError("");
+    navigate(`/c/${code}`);
   };
 
   return (
     <div className="page" role="main" aria-label="Scan the kiosk QR code">
-      <p className="page-brand" aria-hidden="true">Kiosk Access</p>
+      <header className="welcome-top"><AppLogo /></header>
       <div className="scanner-inner">
         <h1 style={{ fontSize: "1.625rem", fontWeight: 800, color: "var(--text)", alignSelf: "flex-start", letterSpacing: "-0.02em" }}>
           Scan the kiosk
@@ -327,10 +428,10 @@ function QrScannerScreen() {
           <div className="panel panel-sage" role="status" style={{ width: "100%", textAlign: "center", padding: "1.5rem" }}>
             <CheckmarkIcon size={24} color="var(--sage-text)" /> QR code found — connecting…
           </div>
-        ) : supported ? (
+        ) : (
           <div className="scanner-viewfinder" aria-label="Camera viewfinder">
-            <video ref={videoRef} className="scanner-video" muted playsInline aria-hidden="true" />
-            {!cameraError && (
+            <video ref={videoRef} className="scanner-video" muted playsInline autoPlay aria-hidden="true" />
+            {camera === "on" && (
               <div className="scanner-frame" aria-hidden="true">
                 <div className="scanner-corner scanner-corner-tl" />
                 <div className="scanner-corner scanner-corner-tr" />
@@ -339,43 +440,72 @@ function QrScannerScreen() {
                 <div className="scanner-line" />
               </div>
             )}
-            {cameraError && (
-              <div className="scanner-placeholder">
+            {camera === "starting" && (
+              <div className="scanner-placeholder" role="status">
+                <span>Opening camera…</span>
+              </div>
+            )}
+            {cameraProblem && (
+              <div className="scanner-placeholder" role="alert">
                 <CameraOffIcon />
-                <span>{cameraError}</span>
+                <span>{CAMERA_PROBLEM_TEXT[cameraProblem]}</span>
+                {canRetry && (
+                  <button type="button" className="btn btn-primary scanner-retry" onClick={startCamera}>
+                    Turn on camera
+                  </button>
+                )}
+                {cameraProblem === "denied" && (
+                  <button type="button" className="scanner-help-link" onClick={() => setHelpOpen(true)}>
+                    How do I allow the camera?
+                  </button>
+                )}
               </div>
             )}
           </div>
-        ) : (
-          <div className="panel panel-peach" style={{ width: "100%" }}>
-            In-app QR scanning isn&apos;t supported by this browser. Use your phone&apos;s camera app to scan the kiosk&apos;s QR code directly.
-          </div>
         )}
 
-        {(cameraError || !supported) && (
-          <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-            <p style={{ fontSize: "0.9rem", color: "var(--text-3)" }}>Or paste the link shown on the kiosk:</p>
-            <div className="text-row">
-              <input
-                className="text-field"
-                type="url"
-                inputMode="url"
-                placeholder="https://…"
-                value={manualUrl}
-                onChange={e => setManualUrl(e.target.value)}
-                onKeyDown={e => { if (e.key === "Enter") submitManual(); }}
-                aria-label="Kiosk link"
-                style={{ flex: 1 }}
-              />
-              <button className="send-btn" type="button" onClick={submitManual} aria-label="Connect">
-                <SendIcon />
-              </button>
-            </div>
+        <form
+          className="code-entry"
+          onSubmit={e => { e.preventDefault(); submitCode(); }}
+          aria-labelledby="code-entry-heading"
+        >
+          <h2 id="code-entry-heading" className="code-entry-heading">Or enter the kiosk code</h2>
+          <p id="code-entry-hint" className="code-entry-hint">
+            It&apos;s shown under the QR code on the kiosk, for example FD12345.
+          </p>
+          <div className="code-entry-row">
+            <input
+              className="code-field"
+              type="text"
+              inputMode="text"
+              autoCapitalize="characters"
+              autoComplete="off"
+              autoCorrect="off"
+              spellCheck={false}
+              maxLength={9}
+              placeholder="FD12345"
+              value={codeInput}
+              onChange={e => { setCodeInput(e.target.value.toUpperCase()); setCodeError(""); }}
+              aria-label="Kiosk code"
+              aria-describedby="code-entry-hint"
+              aria-invalid={Boolean(codeError)}
+            />
+            <button className="btn btn-primary code-connect" type="submit">Connect</button>
           </div>
-        )}
+          {codeError && <p className="code-entry-error" role="alert">{codeError}</p>}
+        </form>
 
-        {cameraError && <p className="voice-error-msg" role="alert">{cameraError}</p>}
+        <a className="profile-link" href="/profile">My profile &amp; order history</a>
+
+
+        <div className="scanner-menu-preview">
+          <p className="scanner-menu-heading">Today&apos;s Menu</p>
+          <MenuCarousel compact />
+        </div>
       </div>
+      {helpOpen && (
+        <PermissionHelpSheet device="camera" onClose={() => setHelpOpen(false)} onRetry={() => { setHelpOpen(false); void startCamera(); }} />
+      )}
     </div>
   );
 }
@@ -403,47 +533,66 @@ function ConnectingScreen() {
 // StartScreen
 // ============================================================
 
-function StartScreen({ kioskId, onStartVoice, onStartText }: {
-  kioskId: string;
+type WelcomeStatus = "idle" | "asking" | "listening" | "declined" | "unheard";
+
+const WELCOME_STATUS: Record<WelcomeStatus, string> = {
+  idle: "Tap anywhere to start talking.",
+  asking: "Speaking…",
+  listening: "Listening… say yes to start.",
+  declined: "No problem. Tap the start button whenever you're ready.",
+  unheard: "I didn't catch that. Tap the start button to try again.",
+};
+
+const MIC_NOTE = "Tap the start button. Your phone will ask to use the microphone: tap Allow.";
+
+function StartScreen({ place, kind, status, micNeedsTap, onStartVoice, onStartText, onProfile }: {
+  place: string;
+  kind: Kind;
+  status: WelcomeStatus;
+  micNeedsTap: boolean;
   onStartVoice(): void;
   onStartText(): void;
+  onProfile(): void;
 }) {
-  const hasSpeech = Boolean(SpeechRecAPI);
+  const hasSpeech = speechSupport().recognition;
+  const busy = status === "asking" || status === "listening";
+  // A tap anywhere starts voice ordering (the button keeps focus, so a VoiceOver double-tap anywhere works too).
+  const tapAnywhere = (e: React.MouseEvent) => {
+    if (hasSpeech && !busy && !(e.target as HTMLElement).closest("button, a")) onStartVoice();
+  };
   return (
-    <div className="page" role="main">
-      <p className="sr-only" aria-live="polite">
-        Connected to kiosk{kioskId ? ` ${kioskId}` : ""}. Ready to take your order.
-      </p>
-      <div className="start-inner">
+    <div className="page welcome-page" role="main" onClick={tapAnywhere}>
+      <header className="welcome-top">
         <AppLogo />
+        <span className="place-chip" role="status"><span className="place-dot" aria-hidden="true" />{place}</span>
+      </header>
 
-        <div className="panel panel-sage" role="status" style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-          <CheckmarkIcon size={15} color="var(--sage-text)" />
-          Connected{kioskId ? ` · ${kioskId}` : ""}
+      <div className="welcome-hero">
+        <div className={`voice-orb${busy ? ` voice-orb-${status}` : ""}`} aria-hidden="true">
+          <span /><span /><span />
+          <MicIcon active={status === "listening"} size={40} />
         </div>
+        <h1 className="welcome-heading">{WELCOME[kind].heading}</h1>
+        <p className="welcome-sub">{WELCOME[kind].sub}</p>
+        <p className="welcome-status" aria-live="polite">{!hasSpeech ? "Type your order below." : micNeedsTap && status === "idle" ? MIC_NOTE : WELCOME_STATUS[status]}</p>
+      </div>
 
-        {/* Food media — replace src with real photography when available */}
-        <div className="start-media" aria-hidden="true">
-          <FoodIllustration />
-        </div>
+      <ProfileCard />
 
-        <div className="start-text">
-          <h1 className="start-heading">Your order,<br />your way.</h1>
-          <p className="start-sub">Tell us what you&apos;re craving. We&apos;ll handle the rest.</p>
-        </div>
-
-        <div className="start-actions">
-          {hasSpeech && (
-            <button className="btn btn-primary" type="button" onClick={onStartVoice}>
-              <MicIcon active={false} size={20} />
-              Start voice ordering
-            </button>
-          )}
-          <button className="btn btn-outline" type="button" onClick={onStartText}>
-            <KeyboardIcon />
-            Type instead
+      <div className="welcome-actions">
+        {hasSpeech && (
+          <button className="btn btn-primary btn-xl" type="button" onClick={onStartVoice} disabled={busy} autoFocus>
+            <MicIcon active={false} size={26} />
+            {WELCOME[kind].start}
           </button>
-        </div>
+        )}
+        <button className="btn btn-outline" type="button" onClick={onStartText}>
+          <KeyboardIcon />
+          Type instead
+        </button>
+        <button className="btn-ghost welcome-profile" type="button" onClick={onProfile}>
+          My profile &amp; order history
+        </button>
       </div>
     </div>
   );
@@ -458,7 +607,10 @@ interface ConvProps {
   kioskState: KioskState | null;
   agentThinking: boolean;
   agentSpeaking: boolean;
+  voiceListening: boolean;
   onSend(text: string): void;
+  /** Tap to talk: a fallback when a browser won't reopen the mic by itself. */
+  onMicPress(): void;
   onEnd(): void;
   onSettings(): void;
   onRepeat(): void;
@@ -466,69 +618,32 @@ interface ConvProps {
 }
 
 function ConversationScreen({
-  messages, kioskState, agentThinking, agentSpeaking,
-  onSend, onEnd, onSettings, onRepeat, onCartReview,
+  messages, kioskState, agentThinking, agentSpeaking, voiceListening,
+  onSend, onMicPress, onEnd, onSettings, onRepeat, onCartReview,
 }: ConvProps) {
   const listRef = useRef<HTMLUListElement>(null);
   const cart = kioskState?.cart;
   const cartCount = cart?.lines.reduce((s, l) => s + l.qty, 0) ?? 0;
   const hasAgentMsg = messages.some(m => m.role === "agent");
+  const hasSpeech = speechSupport().recognition;
 
-  // Derive voice button state
   type VoiceState = "idle" | "listening" | "thinking" | "speaking";
-  const [voiceState, setVoiceState] = useState<VoiceState>("idle");
-  const effectiveVoiceState: VoiceState = agentThinking ? "thinking" : agentSpeaking ? "speaking" : voiceState;
+  const effectiveVoiceState: VoiceState =
+    agentThinking ? "thinking" : agentSpeaking ? "speaking" : voiceListening ? "listening" : "idle";
 
   useEffect(() => {
     const el = listRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages, agentThinking]);
 
-  // Stop mic if agent starts thinking/speaking
-  const recRef = useRef<ISpeechRec | null>(null);
-  useEffect(() => {
-    if ((agentThinking || agentSpeaking) && voiceState === "listening") {
-      recRef.current?.stop();
-    }
-  }, [agentThinking, agentSpeaking, voiceState]);
-
-  const handleMicToggle = () => {
-    if (!SpeechRecAPI) return;
-    if (voiceState === "listening") {
-      recRef.current?.stop();
-      return;
-    }
-    const rec = new SpeechRecAPI();
-    recRef.current = rec;
-    rec.continuous = false;
-    rec.interimResults = false;
-    rec.lang = "en-US";
-    rec.onstart = () => setVoiceState("listening");
-    rec.onresult = e => {
-      const text = e.results[0]?.[0]?.transcript ?? "";
-      if (text) onSend(text);
-    };
-    rec.onerror = e => {
-      if (e.error === "not-allowed") setMicError("Microphone access denied. Use the text box below or enable it in browser settings.");
-      else setMicError("");
-      setVoiceState("idle");
-    };
-    rec.onend = () => setVoiceState("idle");
-    rec.start();
+  const voiceStatusLabel: Record<VoiceState, string> = {
+    idle:      "Type your message below",
+    listening: "Listening…",
+    thinking:  "Thinking…",
+    speaking:  "Speaking…",
   };
 
-  const [micError, setMicError] = useState("");
-
-  const voiceBtnLabel: Record<VoiceState, string> = {
-    idle:      "Microphone off",
-    listening: "Listening — tap to stop",
-    thinking:  "Processing",
-    speaking:  "Assistant speaking",
-  };
-
-  const brandName = kioskState?.kioskId
-    ? kioskState.kioskId.replace(/[-_]/g, " ").replace(/\b\w/g, c => c.toUpperCase())
-    : "Kiosk Access";
+  const brandName = placeName(kioskState, usePhone.getState().kioskId);
 
   return (
     <div className="conv-page" role="main" aria-label="Ordering conversation">
@@ -585,24 +700,30 @@ function ConversationScreen({
       </ul>
 
       <div className="bottom-panel">
-        <div className="voice-section">
+        {/* Ambient voice status — replaces the mic button */}
+        <div className="voice-status-bar" role="status" aria-live="polite">
           {effectiveVoiceState === "listening" && (
-            <div className="voice-ring" aria-hidden="true" />
+            <span className="voice-ring-inline" aria-hidden="true" />
           )}
-          <button
-            className={`voice-circle voice-${effectiveVoiceState}`}
-            type="button"
-            onClick={handleMicToggle}
-            disabled={effectiveVoiceState === "thinking" || effectiveVoiceState === "speaking"}
-            aria-label={voiceState === "listening" ? "Stop recording" : "Start voice input"}
-            aria-pressed={voiceState === "listening"}
-          >
-            <MicIcon active={voiceState === "listening"} size={28} />
-          </button>
-          <p className="voice-status-label" role="status" aria-live="polite">
-            {voiceBtnLabel[effectiveVoiceState]}
-          </p>
-          {micError && <p className="voice-error-msg" role="alert">{micError}</p>}
+          {effectiveVoiceState === "speaking" && (
+            <span className="voice-wave-inline" aria-hidden="true">
+              <span /><span /><span />
+            </span>
+          )}
+          {effectiveVoiceState === "thinking" && (
+            <span className="thinking-dots" aria-hidden="true">
+              <span /><span /><span />
+            </span>
+          )}
+          {effectiveVoiceState === "idle" && hasSpeech ? (
+            // The conversation reopens the mic by itself; this is the fallback when a browser won't.
+            <button className="tap-to-talk" type="button" onClick={onMicPress} aria-label="Tap to talk">
+              <MicIcon active={false} size={18} />
+              <span>Tap to talk</span>
+            </button>
+          ) : (
+            <span className="voice-status-text">{voiceStatusLabel[effectiveVoiceState]}</span>
+          )}
         </div>
 
         <div className="secondary-actions">
@@ -647,7 +768,7 @@ function ConfirmOrderScreen({ cart, onConfirm }: { cart: Cart | null; onConfirm(
 
   return (
     <div className="confirm-page" role="main" aria-label="Review your order">
-      <p className="page-brand" aria-hidden="true">Kiosk Access</p>
+      <header className="welcome-top"><AppLogo /></header>
       <div className="confirm-inner">
         <h1 className="confirm-heading">Review your order</h1>
 
@@ -730,14 +851,14 @@ function PriceTable({ cart }: { cart: Cart }) {
 // PayAtReaderScreen
 // ============================================================
 
-function PayAtReaderScreen({ kioskState, onEnd }: { kioskState: KioskState; onEnd(): void }) {
+function PayAtReaderScreen({ kioskState, onEnd, onRepeat }: { kioskState: KioskState; onEnd(): void; onRepeat(): void }) {
   const total = kioskState.cart?.total;
   return (
     <div className="page" role="main" aria-label="Pay at the reader">
       <p className="sr-only" aria-live="assertive">
         Please pay at the kiosk reader{total != null ? `, total $${total.toFixed(2)}` : ""}.
       </p>
-      <p className="page-brand" aria-hidden="true">Kiosk Access</p>
+      <header className="welcome-top"><AppLogo /></header>
       <div className="centred-page">
         <div className="pay-icon-wrap" aria-hidden="true"><ReaderIcon /></div>
         <h1>Pay at the reader</h1>
@@ -748,11 +869,7 @@ function PayAtReaderScreen({ kioskState, onEnd }: { kioskState: KioskState; onEn
         )}
         <p>Follow the prompts on the kiosk&apos;s payment reader to complete your payment.</p>
         <div className="centred-actions">
-          <button className="btn btn-outline" type="button" onClick={() =>
-            window.speechSynthesis?.speak(new SpeechSynthesisUtterance(
-              `Please pay at the kiosk reader${total != null ? `, total $${total.toFixed(2)}` : ""}.`
-            ))
-          }>
+          <button className="btn btn-outline" type="button" onClick={onRepeat}>
             <RepeatIcon /> Repeat payment instructions
           </button>
           <button className="btn-ghost" type="button" onClick={onEnd} style={{ textAlign: "center" }}>
@@ -768,26 +885,36 @@ function PayAtReaderScreen({ kioskState, onEnd }: { kioskState: KioskState; onEn
 // OrderCompleteScreen
 // ============================================================
 
+const COMPLETE_COPY: Record<Kind, { banner: string; heading: string; body: string; number: string }> = {
+  food: { banner: "Order placed successfully", heading: "Order complete", body: "Thank you! Your order is confirmed and being prepared.", number: "Order number" },
+  clinic: { banner: "You're checked in", heading: "Check-in complete", body: "Thank you! Please have a seat. You'll be called when the doctor is ready.", number: "Your number" },
+  cinema: { banner: "Tickets booked", heading: "Enjoy the movie!", body: "Your tickets are confirmed. They'll print or show on the kiosk.", number: "Booking number" },
+  transit: { banner: "Ticket ready", heading: "Ticket complete", body: "Thank you! Take your ticket from the machine.", number: "Ticket number" },
+};
+
 function OrderCompleteScreen({ kioskState }: { kioskState: KioskState | null }) {
   const orderNumber = kioskState?.orderNumber;
+  const kind = kioskKind(kioskState, usePhone.getState().kioskId);
+  const copy = COMPLETE_COPY[kind];
   return (
-    <div className="page" role="main" aria-label="Order complete">
+    <div className="page" role="main" aria-label={copy.heading}>
       <p className="sr-only" aria-live="polite">
-        Order complete{orderNumber ? `, order number ${orderNumber}` : ""}.
+        {copy.heading}{orderNumber ? `, ${copy.number.toLowerCase()} ${orderNumber}` : ""}.
       </p>
-      <p className="page-brand" aria-hidden="true">Kiosk Access</p>
+      <header className="welcome-top"><AppLogo /></header>
       <div className="centred-page">
         <div className="complete-check" aria-hidden="true">
           <CheckmarkIcon size={36} color="var(--sage-text)" />
         </div>
-        <div className="panel panel-sage" role="status">Order placed successfully</div>
-        <h1>Order complete</h1>
-        <p>Thank you! Your order is confirmed and being prepared.</p>
+        <div className="panel panel-sage" role="status">{copy.banner}</div>
+        <h1>{copy.heading}</h1>
+        <p>{copy.body}</p>
         {orderNumber && (
           <p>
-            <strong>Order number: {orderNumber}</strong>
+            <strong>{copy.number}: {orderNumber}</strong>
           </p>
         )}
+        <a className="btn btn-outline" href="/profile">See my order history</a>
       </div>
     </div>
   );
@@ -801,7 +928,7 @@ function SessionEndedScreen({ heading, body, recovery }: EndInfo) {
   return (
     <div className="page" role="main">
       <p className="sr-only" aria-live="polite">{heading}. {body}</p>
-      <p className="page-brand" aria-hidden="true">Kiosk Access</p>
+      <header className="welcome-top"><AppLogo /></header>
       <div className="centred-page">
         <h1 tabIndex={-1}>{heading}</h1>
         <p>{body}</p>
@@ -823,7 +950,7 @@ function CantConnectScreen({ code, detail }: { code: string; detail?: string }) 
   return (
     <div className="page" role="main">
       <p className="sr-only" aria-live="assertive">{info.heading}. {info.body}</p>
-      <p className="page-brand" aria-hidden="true">Kiosk Access</p>
+      <header className="welcome-top"><AppLogo /></header>
       <div className="centred-page">
         <h1 tabIndex={-1}>{info.heading}</h1>
         <div className="panel panel-peach">{info.body}</div>
@@ -850,12 +977,198 @@ const SPEECH_RATES = [
   { label: "Fast",   value: 1.5  },
 ];
 
+/** What this phone's profile remembers, shown on the start screen. */
+function ProfileCard() {
+  const profile = usePhone(s => s.profile);
+  if (!profile) return null;
+  const p = profile.preferences ?? {};
+  const facts = [
+    p.diet?.length ? p.diet.join(" and ") : "",
+    p.allergies?.length ? `allergic to ${p.allergies.join(", ")}` : "",
+  ].filter(Boolean);
+  if (!profile.returning && !p.name && !facts.length) return null;
+  return (
+    <section className="panel panel-lavender profile-card" aria-label="Your profile">
+      <p className="profile-card-title">{p.name ? `Welcome back, ${p.name}` : "Welcome back"}</p>
+      {profile.lastOrder?.spoken && <p>Last time here: {profile.lastOrder.spoken}</p>}
+      {facts.length > 0 && <p>Remembered: {facts.join(" · ")}</p>}
+      <p className="profile-card-hint">Change these in Settings, or just tell the assistant.</p>
+    </section>
+  );
+}
+
+const COMMON_ALLERGIES = ["peanuts", "tree nuts", "dairy", "eggs", "gluten", "shellfish", "soy"];
+
+/** Edit what's remembered: name, diet, allergies and speaking speed. Saved on the server. */
+function ProfileEditor() {
+  const profile = usePhone(s => s.profile);
+  const setProfile = usePhone(s => s.setProfile);
+  const speechRate = usePhone(s => s.speechRate);
+  const p = profile?.preferences ?? {};
+  const [name, setName] = useState(p.name ?? "");
+  const [diet, setDiet] = useState<string[]>(p.diet ?? []);
+  const [allergies, setAllergies] = useState((p.allergies ?? []).join(", "));
+  const [status, setStatus] = useState("");
+
+  if (!profile) return <p className="settings-label">Your profile appears after you start an order.</p>;
+
+  const picked = allergies.split(",").map(a => a.trim().toLowerCase()).filter(Boolean);
+  const toggleAllergy = (a: string) => setAllergies(
+    (picked.includes(a) ? picked.filter(x => x !== a) : [...picked, a]).join(", "),
+  );
+  const toggleDiet = (d: string) => setDiet(cur => cur.includes(d) ? cur.filter(x => x !== d) : [...cur, d]);
+  const save = async () => {
+    setStatus("Saving…");
+    const result = await updateProfile({
+      ...(name.trim() ? { name: name.trim() } : {}),
+      diet,
+      allergies: allergies.split(",").map(a => a.trim()).filter(Boolean),
+      speechRate,
+    });
+    if ("error" in result) { setStatus(result.error); return; }
+    setProfile(result);
+    setStatus("Saved.");
+  };
+
+  return (
+    <div className="profile-editor" role="group" aria-labelledby="profile-heading">
+      <p className="settings-label" id="profile-heading">Your profile</p>
+      <label className="profile-field">
+        <span>Name</span>
+        <input className="text-field" value={name} onChange={e => setName(e.target.value)} maxLength={40} autoComplete="given-name" />
+      </label>
+      <div className="segmented" role="group" aria-label="Diet">
+        {["vegetarian", "vegan"].map(d => (
+          <button key={d} className="segmented-btn" type="button" aria-pressed={diet.includes(d)} onClick={() => toggleDiet(d)}>
+            {d[0].toUpperCase() + d.slice(1)}
+          </button>
+        ))}
+      </div>
+      <div className="profile-field" role="group" aria-label="Common allergies">
+        <span>Allergies: tap any that apply</span>
+        <div className="chip-row">
+          {COMMON_ALLERGIES.map(a => (
+            <button key={a} className="chip" type="button" aria-pressed={picked.includes(a)} onClick={() => toggleAllergy(a)}>
+              {a}
+            </button>
+          ))}
+        </div>
+      </div>
+      <label className="profile-field">
+        <span>Something else? (separate with commas)</span>
+        <input className="text-field" value={allergies} onChange={e => setAllergies(e.target.value)} placeholder="e.g. sesame, mustard" />
+      </label>
+      <p className="profile-card-hint">The menu has no allergen details, so the assistant will flag these but can&apos;t promise an item is safe.</p>
+      <button className="btn btn-primary" type="button" onClick={save}>Save profile</button>
+      <p className="profile-status" role="status" aria-live="polite">{status}</p>
+    </div>
+  );
+}
+
+/** Past orders on this phone, newest first. */
+function OrderHistory() {
+  const history = usePhone(s => s.profile?.history) ?? [];
+  return (
+    <section className="history" aria-labelledby="history-heading">
+      <p className="settings-label" id="history-heading">Order history</p>
+      {history.length === 0 ? (
+        <p className="profile-card-hint">Nothing yet. Orders you finish at a kiosk will show up here.</p>
+      ) : (
+        <ul className="history-list">
+          {history.map((o, i) => (
+            <li key={`${o.at}-${i}`} className="history-item">
+              <div className="history-head">
+                <span className="history-place">{placeNameForKind(o.kind)}</span>
+                <span className="history-total">${o.total.toFixed(2)}</span>
+              </div>
+              <p className="history-items">{o.lines.map(l => `${l.qty}× ${l.name}`).join(" · ")}</p>
+              <p className="history-date">
+                {new Date(o.at).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
+                {" · "}
+                {new Date(o.at).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}
+              </p>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+/** "Forget me": the first tap asks, the second deletes everything saved on this phone. */
+function ForgetButton({ onDone }: { onDone?(): void }) {
+  const [forget, setForget] = useState<"idle" | "confirm" | "deleting" | "done" | "failed">("idle");
+  const onForget = async () => {
+    if (forget === "idle" || forget === "failed") { setForget("confirm"); return; }
+    if (forget !== "confirm") return;
+    setForget("deleting");
+    const ok = await deleteProfile();
+    setForget(ok ? "done" : "failed");
+    if (ok) onDone?.();
+  };
+  const label = {
+    idle: "Delete my saved data",
+    confirm: "Tap again to delete your name, preferences and past orders",
+    deleting: "Deleting…",
+    done: "Deleted. This phone will start fresh next time.",
+    failed: "Couldn't delete right now. Tap to try again.",
+  }[forget];
+  return (
+    <div className="settings-row">
+      <p className="settings-label" id="forget-label">Saved data</p>
+      <button
+        className={forget === "confirm" ? "btn btn-danger" : "btn btn-outline"}
+        type="button"
+        aria-describedby="forget-label"
+        aria-live="polite"
+        disabled={forget === "deleting" || forget === "done"}
+        onClick={onForget}
+      >
+        {label}
+      </button>
+    </div>
+  );
+}
+
+/** allscreen.work/profile: saved preferences and order history, without a kiosk. */
+export function ProfilePage() {
+  const profile = usePhone(s => s.profile);
+  const [status, setStatus] = useState<"loading" | "none" | "ready">("loading");
+  useEffect(() => {
+    void fetchProfile().then(p => {
+      if (p) { applyProfile(p); setStatus("ready"); } else setStatus("none");
+    });
+  }, []);
+  return (
+    <div className="page profile-page" role="main" aria-labelledby="profile-page-title">
+      <header className="welcome-top">
+        <AppLogo />
+        <a className="place-chip" href="/">Scan a kiosk</a>
+      </header>
+      <h1 className="page-title" id="profile-page-title">Your profile</h1>
+      <p className="welcome-sub">Saved on this phone only. No account, no password: AllScreen remembers your orders, not who you are.</p>
+      {status === "loading" && <p className="welcome-status" role="status">Loading…</p>}
+      {status === "none" && (
+        <div className="panel panel-lavender">
+          <p>No profile on this phone yet. It&apos;s created automatically the first time you order at a kiosk.</p>
+        </div>
+      )}
+      {status === "ready" && profile && (
+        <>
+          <section className="profile-section"><ProfileEditor /></section>
+          <section className="profile-section"><OrderHistory /></section>
+          <section className="profile-section"><ForgetButton onDone={() => setStatus("none")} /></section>
+        </>
+      )}
+    </div>
+  );
+}
+
 function SettingsSheet({ onClose }: { onClose(): void }) {
   const speechRate    = usePhone(s => s.speechRate);
   const setSpeechRate = usePhone(s => s.setSpeechRate);
   const firstFocusRef = useRef<HTMLButtonElement>(null);
   useEffect(() => { firstFocusRef.current?.focus(); }, []);
-
   return (
     <div
       className="sheet-backdrop"
@@ -890,6 +1203,9 @@ function SettingsSheet({ onClose }: { onClose(): void }) {
               ))}
             </div>
           </div>
+          <ProfileEditor />
+          <OrderHistory />
+          <ForgetButton />
         </div>
       </div>
     </div>
@@ -1097,6 +1413,48 @@ function SettingsIcon() {
   );
 }
 
+function PermissionHelpSheet({ device, onClose, onRetry }: { device: Device; onClose(): void; onRetry(): void }) {
+  const retryRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => { retryRef.current?.focus(); }, []);
+  const name = device === "camera" ? "camera" : "microphone";
+  const steps = permissionSteps(device);
+  return (
+    <div
+      className="sheet-backdrop"
+      role="alertdialog"
+      aria-modal="true"
+      aria-labelledby="perm-title"
+      aria-describedby="perm-body"
+      onKeyDown={e => { if (e.key === "Escape") onClose(); }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="sheet">
+        <div className="sheet-handle" aria-hidden="true" />
+        <div className="sheet-header">
+          <h2 className="sheet-title" id="perm-title">Turn on the {name}</h2>
+          <button className="btn-icon" type="button" onClick={onClose} aria-label="Close">
+            <CloseIcon />
+          </button>
+        </div>
+        <div className="sheet-body">
+          <p id="perm-body" className="perm-body">
+            Your browser blocked the {name}. A website can't change this setting, but it only takes a moment:
+          </p>
+          <ol className="perm-steps">
+            {steps.map((step, i) => <li key={i}>{step}</li>)}
+          </ol>
+          <button ref={retryRef} className="btn btn-primary perm-retry" type="button" onClick={onRetry}>
+            Try again
+          </button>
+          <button className="btn btn-outline perm-later" type="button" onClick={onClose}>
+            {device === "camera" ? "Enter the code instead" : "Type instead"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function CloseIcon() {
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
@@ -1137,35 +1495,26 @@ function KeyboardIcon() {
   );
 }
 
-/** Food illustration used on the Start screen — swap for real photography later. */
-function FoodIllustration() {
+function MenuCarousel({ compact = false }: { compact?: boolean }) {
   return (
-    <svg width="140" height="140" viewBox="0 0 140 140" fill="none" aria-hidden="true" focusable="false">
-      {/* Plate shadow */}
-      <ellipse cx="70" cy="118" rx="42" ry="6" fill="rgba(72,86,150,0.07)" />
-      {/* Plate */}
-      <ellipse cx="70" cy="110" rx="40" ry="8" fill="#FEF3E2" stroke="#F5C370" strokeWidth="1.5" />
-      {/* Bottom bun */}
-      <path d="M34 92c0 10 16.268 18 36 18s36-8 36-18H34z" fill="#F9C784" stroke="#F5C370" strokeWidth="1.5" />
-      {/* Lettuce frills */}
-      <path d="M32 86c5-5 8-2 12 1 4-5 8-5 12 0 4-5 8-4 12 0 4-5 8-4 12 0 4-5 8-3 12 2H32z" fill="#A8D8A8" />
-      {/* Cheese slice */}
-      <path d="M30 82h80l-4 8H34l-4-8z" fill="#F9C784" stroke="#F5C370" strokeWidth="1" />
-      {/* Patty */}
-      <rect x="32" y="72" width="76" height="12" rx="4" fill="#C48A5A" />
-      {/* Patty shading */}
-      <rect x="32" y="72" width="76" height="5" rx="4" fill="rgba(255,255,255,0.08)" />
-      {/* Top bun */}
-      <path d="M36 70C36 52 52.536 38 70 38c17.464 0 34 14 34 32H36z" fill="#F9C784" stroke="#F5C370" strokeWidth="1.5" />
-      {/* Sesame seeds */}
-      <ellipse cx="58" cy="50" rx="3.5" ry="2" fill="#F5C370" transform="rotate(-15 58 50)" />
-      <ellipse cx="70" cy="44" rx="3.5" ry="2" fill="#F5C370" transform="rotate(5 70 44)" />
-      <ellipse cx="83" cy="49" rx="3.5" ry="2" fill="#F5C370" transform="rotate(-8 83 49)" />
-      <ellipse cx="64" cy="57" rx="3" ry="1.8" fill="#F5C370" transform="rotate(10 64 57)" />
-      <ellipse cx="76" cy="54" rx="3" ry="1.8" fill="#F5C370" transform="rotate(-5 76 54)" />
-    </svg>
+    <div className="menu-carousel-wrap">
+      {!compact && <p className="menu-carousel-label">Menu</p>}
+      <div className="menu-carousel" role="list" aria-label="Menu items">
+        {MENU_ITEMS.map(item => (
+          <div key={item.id} className="menu-card" role="listitem">
+            <img src={item.image} alt={item.name} className="menu-card-img" loading="lazy" />
+            <div className="menu-card-body">
+              <p className="menu-card-name">{item.name}</p>
+              <p className="menu-card-price">${item.price.toFixed(2)}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
+
+/** Food illustration used on the Start screen — swap for real photography later. */
 
 // ============================================================
 // AppLogo — used on splash-style screens (login, connecting,
@@ -1174,18 +1523,22 @@ function FoodIllustration() {
 
 function AppLogo() {
   return (
-    <div className="app-logo-wrap" aria-hidden="true">
-      <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
-        <rect width="32" height="32" rx="8" fill="var(--indigo)" />
-        {/* Mic body */}
-        <rect x="12" y="6" width="8" height="12" rx="4" fill="white" />
-        {/* Mic arc */}
-        <path d="M8 17c0 4.418 3.582 8 8 8s8-3.582 8-8" stroke="white" strokeWidth="2" strokeLinecap="round" />
-        {/* Stand */}
-        <line x1="16" y1="25" x2="16" y2="28" stroke="white" strokeWidth="2" strokeLinecap="round" />
-        <line x1="12" y1="28" x2="20" y2="28" stroke="white" strokeWidth="2" strokeLinecap="round" />
+    <div className="app-logo-wrap" aria-label="AllScreen">
+      <svg width="34" height="34" viewBox="0 0 34 34" fill="none" aria-hidden="true">
+        <defs>
+          <linearGradient id="allscreen-mark" x1="0" y1="0" x2="34" y2="34" gradientUnits="userSpaceOnUse">
+            <stop offset="0" stopColor="#485696" />
+            <stop offset="1" stopColor="#7C6FD6" />
+          </linearGradient>
+        </defs>
+        <rect width="34" height="34" rx="10" fill="url(#allscreen-mark)" />
+        {/* A voice wave: talking to any screen */}
+        <rect x="8" y="14" width="3" height="6" rx="1.5" fill="white" />
+        <rect x="13" y="10" width="3" height="14" rx="1.5" fill="white" />
+        <rect x="18" y="7" width="3" height="20" rx="1.5" fill="#F9C784" />
+        <rect x="23" y="12" width="3" height="10" rx="1.5" fill="white" />
       </svg>
-      <span className="app-logo-name">Kiosk Access</span>
+      <span className="app-logo-name">All<span>Screen</span></span>
     </div>
   );
 }
@@ -1225,38 +1578,26 @@ function EyeOffIcon() {
 // ============================================================
 
 const DEMO_SCREENS: { id: string; label: string }[] = [
-  { id: "login",       label: "Login" },
-  { id: "scanner",     label: "QR Scanner" },
-  { id: "connecting",  label: "Connecting" },
-  { id: "start",       label: "Start" },
-  { id: "conversation",label: "Conversation" },
-  { id: "confirm",     label: "Confirm Order" },
-  { id: "paying",      label: "Pay at Reader" },
-  { id: "complete",    label: "Order Complete" },
-  { id: "ended",       label: "Session Ended" },
-  { id: "error-busy",  label: "Error: Busy" },
-  { id: "error-expired", label: "Error: Expired" },
-  { id: "error-offline", label: "Error: Offline" },
-  { id: "settings",    label: "Settings" },
+  { id: "scanner",  label: "Scan QR" },
+  { id: "settings", label: "Settings" },
 ];
 
 const MOCK_MSGS: ChatMessage[] = [
-  { id: "1", role: "agent",  text: "Hi! What can I get you today?",                                awaitingConfirmation: false },
-  { id: "2", role: "user",   text: "I'd like a cheeseburger",                                      awaitingConfirmation: false },
-  { id: "3", role: "agent",  text: "Great! Would you like to add fries and a drink as a combo for $2 more?", awaitingConfirmation: false },
-  { id: "4", role: "user",   text: "Yes please, medium size",                                      awaitingConfirmation: false },
-  { id: "5", role: "agent",  text: "Perfect. I've added a Cheeseburger Combo (medium) to your order. Anything else?", awaitingConfirmation: false },
+  { id: "1", role: "agent",  text: "Hey! Welcome to Raising Cane's. What can I get you today?",                             awaitingConfirmation: false },
+  { id: "2", role: "user",   text: "I'll have The Box Combo",                                                                awaitingConfirmation: false },
+  { id: "3", role: "agent",  text: "Love it! The Box Combo comes with 4 chicken fingers, crinkle-cut fries, coleslaw, Cane's sauce, and Texas toast. Want to add an extra Cane's sauce for $0.50?", awaitingConfirmation: false },
+  { id: "4", role: "user",   text: "Yes please",                                                                             awaitingConfirmation: false },
+  { id: "5", role: "agent",  text: "Perfect. I've added The Box Combo with an extra Cane's Sauce. Anything else?",          awaitingConfirmation: false },
 ];
 
 const MOCK_CART: Cart = {
   lines: [
-    { lineId: "L1", itemId: "cb",  name: "Cheeseburger",   qty: 1, options: { size: ["Large"], extras: ["Extra cheese"] }, lineTotal: 7.99 },
-    { lineId: "L2", itemId: "fr",  name: "Medium Fries",   qty: 1, options: {},                               lineTotal: 2.99 },
-    { lineId: "L3", itemId: "dr",  name: "Fountain Drink", qty: 1, options: { size: ["Medium"] },             lineTotal: 1.49 },
+    { lineId: "L1", itemId: "box", name: "The Box Combo",      qty: 1, options: { includes: ["4 Chicken Fingers", "Crinkle-Cut Fries", "Coleslaw", "Texas Toast"] }, lineTotal: 13.49 },
+    { lineId: "L2", itemId: "cs",  name: "Extra Cane's Sauce", qty: 1, options: {},                                                                                   lineTotal: 0.50  },
   ],
-  subtotal: 12.47,
-  tax: 1.25,
-  total: 13.72,
+  subtotal: 13.99,
+  tax: 1.40,
+  total: 15.39,
 };
 
 const MOCK_KIOSK_PAYING: KioskState = {
@@ -1279,7 +1620,7 @@ const MOCK_KIOSK_COMPLETE: KioskState = {
 };
 
 export function DemoApp() {
-  const initialScreen = new URLSearchParams(window.location.search).get("demo") || "login";
+  const initialScreen = new URLSearchParams(window.location.search).get("demo") || "scanner";
   const [screen, setScreen] = useState(initialScreen);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
@@ -1290,55 +1631,9 @@ export function DemoApp() {
   }, []);
 
   const noop = () => {};
-  const noopStr = (_: string) => {};
 
   const renderScreen = () => {
     switch (screen) {
-      case "login":
-        return <LoginPage />;
-      case "scanner":
-        return <QrScannerScreen />;
-      case "connecting":
-        return <ConnectingScreen />;
-      case "start":
-        return <StartScreen kioskId="store42-kiosk1" onStartVoice={noop} onStartText={noop} />;
-      case "conversation":
-        return (
-          <>
-            <ConversationScreen
-              messages={MOCK_MSGS}
-              kioskState={{ kioskId: "store42-kiosk1", screen: "menu", title: "Menu", buttons: [], cart: MOCK_CART, sessionActive: true }}
-              agentThinking={false}
-              agentSpeaking={false}
-              onSend={noopStr}
-              onEnd={noop}
-              onSettings={() => setSettingsOpen(true)}
-              onRepeat={noop}
-              onCartReview={noop}
-            />
-            {settingsOpen && <SettingsSheet onClose={() => setSettingsOpen(false)} />}
-          </>
-        );
-      case "confirm":
-        return <ConfirmOrderScreen cart={MOCK_CART} onConfirm={noop as never} />;
-      case "paying":
-        return <PayAtReaderScreen kioskState={MOCK_KIOSK_PAYING} onEnd={noop} />;
-      case "complete":
-        return <OrderCompleteScreen kioskState={MOCK_KIOSK_COMPLETE} />;
-      case "ended":
-        return (
-          <SessionEndedScreen
-            heading="Session timed out"
-            body="Your session ended due to inactivity."
-            recovery="Tap the kiosk tag to start a new session."
-          />
-        );
-      case "error-busy":
-        return <CantConnectScreen code="kiosk_busy" />;
-      case "error-expired":
-        return <CantConnectScreen code="code_expired" />;
-      case "error-offline":
-        return <CantConnectScreen code="kiosk_offline" />;
       case "settings":
         return (
           <div className="page" style={{ position: "relative" }}>
@@ -1346,8 +1641,11 @@ export function DemoApp() {
             <SettingsSheet onClose={noop} />
           </div>
         );
+      case "scanner":
       default:
-        return <ConnectingScreen />;
+        // QrScannerScreen navigates via window.location.href when it reads a real code,
+        // which reloads the page at /k/:kioskId?t=... and kicks off the real App flow.
+        return <QrScannerScreen />;
     }
   };
 
@@ -1372,7 +1670,7 @@ export function DemoApp() {
         gap: "0.375rem",
       }}>
         <p style={{ color: "rgba(255,255,255,0.45)", fontSize: "0.7rem", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>
-          Preview — tap a screen
+          AllScreen
         </p>
         <div style={{ display: "flex", gap: "0.5rem", overflowX: "auto", paddingBottom: "0.25rem" }}>
           {DEMO_SCREENS.map(s => (

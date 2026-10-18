@@ -5,12 +5,16 @@ import { getKioskState, getSession, sendAgentMessage, logEvent } from "../realti
 import { createAgent } from "./service.ts";
 import { readAgentMode } from "./config.ts";
 import { createLazyGeminiModel } from "./gemini.ts";
-import { executeTool } from "../bridge/index.ts";
+import { executeTool, interceptUserMessage } from "../bridge/index.ts";
+import { isProfileTool, memoryForSession, runProfileTool } from "../profiles/index.ts";
 
 const agent = createAgent({
   getSession, getKioskState, sendAgentMessage,
   generateTurn: readAgentMode() === "gemini" ? createLazyGeminiModel() : undefined,
-  executeTool,
+  // Profile tools (remember or forget the customer) are handled here; everything else goes to the bridge.
+  executeTool: (sessionId, name, input) => (isProfileTool(name) ? runProfileTool(sessionId, name, input) : executeTool(sessionId, name, input)),
+  // What we remember about this customer: name, diet, allergies, and their last order here.
+  getMemory: (sessionId) => memoryForSession(sessionId),
   reportLatency: (_sessionId, kind, milliseconds) => {
     console.info(JSON.stringify({ metric: "agent_latency", kind, milliseconds }));
   },
@@ -21,6 +25,9 @@ const agent = createAgent({
 });
 
 export async function handleUserMessage(sessionId: string, text: string): Promise<AgentMessage> {
+  // While a checkout is pending, a whole-message "yes" confirms it here; anything else clears it.
+  const confirmed = await interceptUserMessage(sessionId, text);
+  if (confirmed) return confirmed;
   return agent.handleUserMessage(sessionId, text);
 }
 

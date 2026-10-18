@@ -18,7 +18,7 @@ describe("menu.json", () => {
   });
 
   it("has 4 categories and about 12 orderable items", () => {
-    expect(menu.categories.map((c) => c.id)).toEqual(["burgers", "sides", "drinks", "desserts"]);
+    expect(menu.categories.map((c) => c.id)).toEqual(["combos", "chicken", "sides", "drinks"]);
     const visible = menu.items.filter((i) => !i.hidden);
     expect(visible.length).toBeGreaterThanOrEqual(10);
     expect(visible.length).toBeLessThanOrEqual(14);
@@ -57,16 +57,16 @@ describe("menu.json", () => {
   });
 
   it("has a required single-choice group", () => {
-    const burger = menu.items.find((i) => i.id === "cheeseburger")!;
-    const size = burger.optionGroups.find((g) => g.id === "size")!;
-    expect(size).toMatchObject({ type: "single", required: true });
+    const combo = menu.items.find((i) => i.id === "box_combo")!;
+    const drink = combo.optionGroups.find((g) => g.id === "drink")!;
+    expect(drink).toMatchObject({ type: "single", required: true });
   });
 
   it("has optional removals", () => {
-    const burger = menu.items.find((i) => i.id === "cheeseburger")!;
-    const remove = burger.optionGroups.find((g) => g.id === "remove")!;
+    const combo = menu.items.find((i) => i.id === "box_combo")!;
+    const remove = combo.optionGroups.find((g) => g.id === "remove")!;
     expect(remove).toMatchObject({ type: "multi", required: false });
-    expect(remove.choices.map((c) => c.id)).toContain("no_onions");
+    expect(remove.choices.map((c) => c.id)).toContain("no_coleslaw");
   });
 
   it("every upsell points at a hidden item, and every hidden item has an upsell", () => {

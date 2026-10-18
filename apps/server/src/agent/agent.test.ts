@@ -67,7 +67,7 @@ test("an active session can respond before the kiosk has published state", async
 });
 
 test("tool dispatch preserves session, input, and the bridge result", async () => {
-  const input = { itemId: "cheeseburger", qty: 1, options: { size: ["large"] } };
+  const input = { itemId: "box_combo", qty: 1, options: { drink: ["sweet_tea"] } };
   const result = await dispatchAgentTool(async (sessionId, name, received) => {
     assert.equal(sessionId, "a");
     assert.equal(name, "add_item");
@@ -84,8 +84,8 @@ test("payment, generic press, confirm and unknown tools never reach the bridge",
     }, "a", name, { buttonId: "btn-pay" });
     assert.match(result, /Unknown agent tool/);
   }
-  assert.equal(agentTools.length, 8);
-  assert.equal(new Set(agentTools.map((t) => t.name)).size, 8);
+  assert.equal(agentTools.length, 13);
+  assert.equal(new Set(agentTools.map((t) => t.name)).size, 13);
 });
 
 test("bridge exceptions remain observable to the future tool loop", async () => {

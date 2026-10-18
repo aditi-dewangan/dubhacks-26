@@ -16,26 +16,26 @@ describe("kiosk event detection", () => {
 
   it("stays quiet about the upsell popup that add_item caused", async () => {
     const t = setup();
-    await t.tool("add_item", { itemId: "cheeseburger", options: { size: ["large"] } });
+    await t.tool("add_item", { itemId: "chicken_sandwich", options: {} });
     t.publish(); // the kiosk's debounced state arrives after the ack
     expect(t.kioskEvents).toEqual([]);
   });
 
   it("stays quiet when the popup state arrives before the ack", async () => {
     const t = setup({ autoAck: false });
-    const reply = t.tool("add_item", { itemId: "cheeseburger", options: { size: ["large"] } });
+    const reply = t.tool("add_item", { itemId: "chicken_sandwich", options: {} });
     await new Promise((r) => setTimeout(r, 0));
     const env = t.sent[0];
     t.kiosk.run(env.command);
     t.publish(); // state with the popup, while the command is still in flight
     t.ackWithCurrentState(env);
-    expect(await reply).toMatch(/^Added 1 large cheeseburger/);
+    expect(await reply).toMatch(/^Added 1 chicken sandwich/);
     expect(t.kioskEvents).toEqual([]);
   });
 
   it("announces the order number when payment completes", async () => {
     const t = setup();
-    await t.tool("add_item", { itemId: "cookie", qty: 1 });
+    await t.tool("add_item", { itemId: "texas_toast", qty: 1 });
     await t.tool("request_checkout");
     await t.bridge.handleConfirm("s1", true);
     t.kiosk.tapCard();
