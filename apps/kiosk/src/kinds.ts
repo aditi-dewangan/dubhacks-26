@@ -21,7 +21,7 @@ export const BRANDS: Record<KioskKind, Brand> = {
   food: { name: "Raising Cane's", meta: "Chicken fingers · Order at the kiosk", mark: "RC", color: "#c8102e", dark: "#a00d25", task: "ordering", pageTitle: "Raising Cane's Kiosk" },
   clinic: { name: "Seattle Children's Hospital", meta: "Patient check-in", mark: "SC", color: "#0077C8", dark: "#005fa3", task: "checking in", pageTitle: "Seattle Children's Check-in" },
   cinema: { name: "AMC Theaters", meta: "Tickets · Screens 1–8", mark: "AMC", color: "#CC0000", dark: "#a80000", task: "buying tickets", pageTitle: "AMC Theaters Tickets" },
-  transit: { name: "Light Rail", meta: "Ticket machine · Westlake Station", mark: "LR", color: "#047857", dark: "#065f46", task: "buying a ticket", pageTitle: "Light Rail Ticket Machine" },
+  transit: { name: "Light Rail", meta: "Ticket machine", mark: "LR", color: "#047857", dark: "#065f46", task: "buying a ticket", pageTitle: "Light Rail Ticket Machine" },
 };
 
 const requested = new URLSearchParams(window.location.search).get("kind");

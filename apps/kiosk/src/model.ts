@@ -10,6 +10,11 @@ import imgChickenFinger   from "./assets/menu/chicken-finger-medium0830.avif";
 import imgTailgate        from "./assets/menu/canestailgate-25.avif";
 import imgFries           from "./assets/menu/fries_recrop.avif";
 import imgSauce           from "./assets/menu/sauce-medium0830.avif";
+import imgColeslaw        from "./assets/menu/coleslaw.avif";
+import imgTexasToast      from "./assets/menu/texas_toast.avif";
+import imgFountainDrink   from "./assets/menu/fountain_drink.avif";
+import imgLemonade        from "./assets/menu/lemonade.avif";
+import imgSweetTea        from "./assets/menu/sweet_tea.avif";
 
 export const ids = {
   start: "btn-start",
@@ -96,15 +101,20 @@ const EMOJI: Record<string, string> = {
 };
 
 const PHOTOS: Record<string, string> = {
-  box_combo:         imgBoxCombo,
+  box_combo:          imgBoxCombo,
   three_finger_combo: img3Finger,
-  caniac_combo:      imgCaniac,
-  sandwich_combo:    imgSandwich,
-  chicken_sandwich:  imgSandwich,
-  chicken_finger:    imgChickenFinger,
-  tailgate:          imgTailgate,
-  fries:             imgFries,
-  canes_sauce:       imgSauce,
+  caniac_combo:       imgCaniac,
+  sandwich_combo:     imgSandwich,
+  chicken_sandwich:   imgSandwich,
+  chicken_finger:     imgChickenFinger,
+  tailgate:           imgTailgate,
+  fries:              imgFries,
+  canes_sauce:        imgSauce,
+  coleslaw:           imgColeslaw,
+  texas_toast:        imgTexasToast,
+  fountain_drink:     imgFountainDrink,
+  lemonade:           imgLemonade,
+  sweet_tea:          imgSweetTea,
 };
 
 const CATEGORY_EMOJI: Record<string, string> = { combos: "🍱", chicken: "🍗", sides: "🍟", drinks: "🥤" };

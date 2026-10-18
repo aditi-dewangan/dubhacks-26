@@ -1,5 +1,5 @@
-// Light Rail: ticket machine at Westlake Station (fares are made up).
-// welcome → destination → ticket (type, fare, quantity) → review → paying → complete
+// Light Rail: ticket machine (fares are made up).
+// welcome → origin → destination → ticket → review → paying → complete
 
 import { create } from "zustand";
 import type { ConnectionStatus } from "@kiosk-access/sdk";
@@ -8,32 +8,39 @@ import { EMPTY_CART, type GenericKiosk } from "../generic.ts";
 import { brand } from "../kinds.ts";
 import { ids, money, round2 } from "../model.ts";
 import { AccessCard, CardReaderScreen } from "../ui.tsx";
-type Screen = "welcome" | "destination" | "ticket" | "review" | "paying" | "complete";
+
+type Screen = "welcome" | "origin" | "destination" | "ticket" | "review" | "paying" | "complete";
 type TicketType = "single" | "round" | "day";
 type Fare = "adult" | "youth" | "senior" | "reduced";
 
 const STATIONS = [
-  { id: "capitol_hill", name: "Capitol Hill", zone: 1 },
-  { id: "university", name: "University District", zone: 1 },
-  { id: "stadium", name: "Stadium", zone: 1 },
-  { id: "beacon_hill", name: "Beacon Hill", zone: 2 },
-  { id: "northgate", name: "Northgate", zone: 2 },
-  { id: "rainier_beach", name: "Rainier Beach", zone: 2 },
-  { id: "airport", name: "Airport", zone: 3 },
-  { id: "lynnwood", name: "Lynnwood", zone: 3 },
+  { id: "westlake",       name: "Westlake",            zone: 1 },
+  { id: "capitol_hill",   name: "Capitol Hill",         zone: 1 },
+  { id: "u_district",     name: "U District",           zone: 1 },
+  { id: "view_district",  name: "View District",        zone: 1 },
+  { id: "northgate",      name: "Northgate",            zone: 2 },
+  { id: "stadium",        name: "Stadium / SoDo",       zone: 1 },
+  { id: "beacon_hill",    name: "Beacon Hill",          zone: 2 },
+  { id: "columbia_city",  name: "Columbia City",        zone: 2 },
+  { id: "rainier_beach",  name: "Rainier Beach",        zone: 2 },
+  { id: "airport",        name: "Sea-Tac Airport",      zone: 3 },
+  { id: "bellevue",       name: "Downtown Bellevue",    zone: 3 },
+  { id: "lynnwood",       name: "Lynnwood City Ctr",    zone: 3 },
 ];
+
 const ADULT_BY_ZONE: Record<number, number> = { 1: 2.75, 2: 3.25, 3: 3.75 };
 const TICKETS: Record<TicketType, string> = { single: "One way", round: "Round trip", day: "Day pass" };
 const FARES: Record<Fare, string> = { adult: "Adult", youth: "Youth (6–18)", senior: "Senior (65+)", reduced: "Reduced fare" };
 
-function unitPrice(zone: number, ticket: TicketType, fare: Fare): number {
+function unitPrice(destZone: number, ticket: TicketType, fare: Fare): number {
   if (ticket === "day") return fare === "adult" ? 8 : 3;
-  const oneWay = fare === "adult" ? ADULT_BY_ZONE[zone] : 1;
+  const oneWay = fare === "adult" ? ADULT_BY_ZONE[destZone] : 1;
   return ticket === "round" ? oneWay * 2 : oneWay;
 }
 
 interface State {
   screen: Screen;
+  origin?: string;
   dest?: string;
   ticket: TicketType;
   fare: Fare;
@@ -41,6 +48,7 @@ interface State {
   processing: boolean;
   code?: string;
   go(screen: Screen): void;
+  pickOrigin(id: string): void;
   pickDestination(id: string): void;
   setTicket(t: TicketType): void;
   setFare(f: Fare): void;
@@ -50,11 +58,21 @@ interface State {
 }
 
 let codeCounter = 7310;
-const initial = { screen: "welcome" as Screen, dest: undefined, ticket: "single" as TicketType, fare: "adult" as Fare, qty: 1, processing: false, code: undefined };
+const initial = {
+  screen: "welcome" as Screen,
+  origin: undefined,
+  dest: undefined,
+  ticket: "single" as TicketType,
+  fare: "adult" as Fare,
+  qty: 1,
+  processing: false,
+  code: undefined,
+};
 
 const useTransit = create<State>()((set, get) => ({
   ...initial,
   go: (screen) => set({ screen }),
+  pickOrigin: (origin) => set({ origin, screen: "destination" }),
   pickDestination: (dest) => set({ dest, screen: "ticket" }),
   setTicket: (ticket) => set({ ticket }),
   setFare: (fare) => set({ fare }),
@@ -70,15 +88,16 @@ const useTransit = create<State>()((set, get) => ({
 }));
 
 function cartOf(s: State): Cart {
-  const station = STATIONS.find((x) => x.id === s.dest);
-  if (!station) return EMPTY_CART;
-  const each = unitPrice(station.zone, s.ticket, s.fare);
+  const dest = STATIONS.find((x) => x.id === s.dest);
+  if (!dest) return EMPTY_CART;
+  const origin = STATIONS.find((x) => x.id === s.origin);
+  const each = unitPrice(dest.zone, s.ticket, s.fare);
   const lineTotal = round2(each * s.qty);
   return {
     lines: [{
       lineId: "ticket",
       itemId: `${s.ticket}_${s.fare}`,
-      name: `${TICKETS[s.ticket]}, ${FARES[s.fare]}, Westlake to ${station.name}`,
+      name: `${TICKETS[s.ticket]}, ${FARES[s.fare]}, ${origin?.name ?? "—"} to ${dest.name}`,
       qty: s.qty,
       options: { ticket: [s.ticket], fare: [s.fare] },
       lineTotal,
@@ -91,19 +110,20 @@ function cartOf(s: State): Cart {
 
 function Body({ qrUrl, status }: { qrUrl: string | null; status: ConnectionStatus }) {
   const s = useTransit();
-  const station = STATIONS.find((x) => x.id === s.dest);
+  const origin = STATIONS.find((x) => x.id === s.origin);
+  const dest = STATIONS.find((x) => x.id === s.dest);
   const cart = cartOf(s);
-  const each = station ? unitPrice(station.zone, s.ticket, s.fare) : 0;
+  const each = dest ? unitPrice(dest.zone, s.ticket, s.fare) : 0;
 
   switch (s.screen) {
     case "welcome":
       return (
         <section className="welcome">
           <div className="welcome-hero">
-            <p className="eyebrow">{brand.name} · Westlake Station</p>
+            <p className="eyebrow">{brand.name}</p>
             <h1 data-kiosk-title="">Where are you headed?</h1>
             <p className="welcome-sub">Buy light-rail tickets and day passes. Card or phone payment.</p>
-            <button className="btn-red start-btn" type="button" data-kiosk-id="btn-start" onClick={() => s.go("destination")}>
+            <button className="btn-red start-btn" type="button" data-kiosk-id="btn-start" onClick={() => s.go("origin")}>
               Buy a ticket
             </button>
           </div>
@@ -111,13 +131,39 @@ function Body({ qrUrl, status }: { qrUrl: string | null; status: ConnectionStatu
         </section>
       );
 
+    case "origin":
+      return (
+        <section className="gen-page">
+          <h2 className="section-title" data-kiosk-title="">Where are you departing from?</h2>
+          <p className="section-sub">Select your starting station</p>
+          <div className="station-grid">
+            {STATIONS.map((st) => (
+              <button
+                key={st.id}
+                type="button"
+                className="station"
+                aria-label={`Depart from ${st.name}`}
+                data-kiosk-id={`origin-${st.id}`}
+                onClick={() => s.pickOrigin(st.id)}
+              >
+                <span className="station-name">{st.name}</span>
+                <span className="muted small">Zone {st.zone}</span>
+              </button>
+            ))}
+          </div>
+          <div className="gen-actions">
+            <button className="btn-grey" type="button" data-kiosk-id="btn-cancel" onClick={s.reset}>Cancel</button>
+          </div>
+        </section>
+      );
+
     case "destination":
       return (
         <section className="gen-page">
           <h2 className="section-title" data-kiosk-title="">Choose your destination</h2>
-          <p className="section-sub">From Westlake Station</p>
+          <p className="section-sub">From {origin?.name}</p>
           <div className="station-grid">
-            {STATIONS.map((st) => (
+            {STATIONS.filter((st) => st.id !== s.origin).map((st) => (
               <button
                 key={st.id}
                 type="button"
@@ -132,7 +178,7 @@ function Body({ qrUrl, status }: { qrUrl: string | null; status: ConnectionStatu
             ))}
           </div>
           <div className="gen-actions">
-            <button className="btn-grey" type="button" data-kiosk-id="btn-cancel" onClick={s.reset}>Cancel</button>
+            <button className="btn-grey" type="button" data-kiosk-id="btn-back" onClick={() => s.go("origin")}>Back</button>
           </div>
         </section>
       );
@@ -140,8 +186,8 @@ function Body({ qrUrl, status }: { qrUrl: string | null; status: ConnectionStatu
     case "ticket":
       return (
         <section className="gen-page narrow">
-          <h2 className="section-title" data-kiosk-title="">Ticket to {station?.name}</h2>
-          <p className="section-sub" data-kiosk-info="">Zone {station?.zone} from Westlake</p>
+          <h2 className="section-title" data-kiosk-title="">{origin?.name} → {dest?.name}</h2>
+          <p className="section-sub" data-kiosk-info="">Zone {dest?.zone} destination</p>
           <fieldset className="yn-group">
             <legend>Ticket</legend>
             <div className="choice-row">
@@ -188,7 +234,7 @@ function Body({ qrUrl, status }: { qrUrl: string | null; status: ConnectionStatu
           <div className="page-main">
             <h2 className="section-title" data-kiosk-title="">Review your ticket</h2>
             <div className="info-card">
-              <p className="info-big" data-kiosk-info="">Westlake to {station?.name}</p>
+              <p className="info-big" data-kiosk-info="">{origin?.name} → {dest?.name}</p>
               <p data-kiosk-info="">{s.qty} × {TICKETS[s.ticket]}, {FARES[s.fare]}</p>
               <p data-kiosk-info="">{s.ticket === "day" ? "Valid on all lines until 3 AM" : "Valid for 2 hours after purchase"}</p>
             </div>
@@ -216,8 +262,8 @@ function Body({ qrUrl, status }: { qrUrl: string | null; status: ConnectionStatu
           <h2 data-kiosk-title="">Take your {s.qty > 1 ? "tickets" : "ticket"} below</h2>
           <p className="muted">Ticket code</p>
           <p className="order-number" data-kiosk-info="">{s.code}</p>
-          <p className="muted" data-kiosk-info="">Westlake to {station?.name} · {TICKETS[s.ticket]} · {FARES[s.fare]}</p>
-          <p className="muted" data-kiosk-info="">Trains to {station?.name} leave from Platform 2 every 8 minutes.</p>
+          <p className="muted" data-kiosk-info="">{origin?.name} → {dest?.name} · {TICKETS[s.ticket]} · {FARES[s.fare]}</p>
+          <p className="muted" data-kiosk-info="">Trains depart every 8 minutes from the platform below.</p>
           <button className="btn-red wide" type="button" data-kiosk-id="btn-done" onClick={s.reset}>Done</button>
         </section>
       );
