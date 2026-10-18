@@ -13,9 +13,13 @@ export function checkoutReadback(cart: Cart): string {
   const tail = `Total ${price}. Please confirm your order on the phone.`;
   const lines = cart.lines.map((line) => {
     const item = menu.items.find((item) => item.id === line.itemId);
-    const choices = Object.entries(line.options).flatMap(([groupId, ids]) => ids.map((id) =>
-      item?.optionGroups.find((group) => group.id === groupId)?.choices.find((choice) => choice.id === id)?.name ?? "unrecognized option"));
-    return `${line.qty} ${item?.name ?? line.name}${choices.length ? `, ${choices.join(", ")}` : ""}`;
+    // Not a food-menu item (a transit or cinema ticket): the kiosk's line name already says it all.
+    if (!item) return `${line.qty} ${line.name}`;
+    const choices = Object.entries(line.options).flatMap(([groupId, ids]) => ids.flatMap((id) => {
+      const name = item.optionGroups.find((group) => group.id === groupId)?.choices.find((choice) => choice.id === id)?.name;
+      return name ? [name] : [];
+    }));
+    return `${line.qty} ${item.name}${choices.length ? `, ${choices.join(", ")}` : ""}`;
   });
   const full = `${lines.join("; ")}. ${tail}`;
   if (full.length <= 300) return full;

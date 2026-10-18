@@ -108,7 +108,9 @@ export async function runToolLoop(deps: LoopDependencies, sessionId: string, tex
         return finish(`${details ? `${details}. ` : ""}Please confirm on your phone to finish.`);
       }
     }
-    return finish("I've reached the limit for this request. Please review your current order before asking for another change.");
+    // Out of rounds: say where things stand and keep going, never refuse the next request.
+    const title = deps.getKioskState(session.kioskId)?.title;
+    return finish(`I've done what I can for that step${title ? `, and the kiosk is now on ${title}` : ""}. What would you like to do next?`);
   } catch (error) {
     if (!active()) return endedReply();
     const code = error instanceof GeminiError ? error.code : "unavailable";

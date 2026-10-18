@@ -158,3 +158,17 @@ test("mode selection keeps offline integration explicit and rejects typos", () =
   assert.equal(readAgentMode({ AGENT_MODE: "gemini" }), "gemini");
   assert.throws(() => readAgentMode({ AGENT_MODE: "gemni" }), /AGENT_MODE/);
 });
+
+test("clinic, cinema and transit prompts carry no food menu and never mention Raising Cane's", () => {
+  for (const kind of ["clinic", "cinema", "transit"] as const) {
+    const prompt = buildSystemPrompt(undefined, true, false, kind);
+    assert.doesNotMatch(prompt, /MENU_JSON/);
+    assert.match(prompt, /never\s+mention Raising Cane's/);
+    assert.match(prompt, /Never say the customer will get a notification/);
+  }
+  assert.match(buildSystemPrompt(undefined, true, false, "clinic"), /spell it letter by letter/);
+  assert.doesNotMatch(buildSystemPrompt(undefined, true, false, "transit"), /spell it letter by letter/);
+  // The food kiosk keeps its menu, plus the same payment rule.
+  assert.match(buildSystemPrompt(), /MENU_JSON/);
+  assert.match(buildSystemPrompt(), /Never say the customer will get a notification/);
+});

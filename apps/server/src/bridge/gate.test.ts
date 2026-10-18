@@ -2,7 +2,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { isAffirmative, sameCart } from "./gate.ts";
+import { isAffirmative, isChangeRequest, sameCart } from "./gate.ts";
 import { setup } from "./harness.ts";
 
 const toast = { itemId: "texas_toast", qty: 2, options: {} };
@@ -130,7 +130,9 @@ describe("payment gate", () => {
 });
 
 describe('"yes" check', () => {
-  it.each(["yes", "Yes please.", "confirm", "yeah", "Yep!", "correct", "that's right", "That’s right.", "yes, please", "  YES  "])(
+  it.each(["yes", "Yes please.", "confirm", "yeah", "Yep!", "correct", "that's right", "That’s right.", "yes, please", "  YES  ",
+    "I confirm", "i confirm.", "Yes, I confirm", "confirm my order", "Confirm the check-in", "complete check-in",
+    "Complete my checkin.", "check me in", "place my order", "confirm tickets"])(
     "%j confirms",
     (text) => expect(isAffirmative(text)).toBe(true),
   );
@@ -139,6 +141,31 @@ describe('"yes" check', () => {
     "%j does not confirm",
     (text) => expect(isAffirmative(text)).toBe(false),
   );
+
+  it.each(["change", "Change order", "change my order", "no", "I want to change something", "go back", "edit order"])(
+    "%j asks to change",
+    (text) => expect(isChangeRequest(text)).toBe(true),
+  );
+
+  it.each(["there's a change in my address", "change the drink to lemonade", "yes", "no fries", "confirm"])(
+    "%j is not a plain change request",
+    (text) => expect(isChangeRequest(text)).toBe(false),
+  );
+
+  it("saying change does what the Change button does: nothing submitted, gate closed", async () => {
+    const t = await readyToPay();
+    const reply = await t.bridge.interceptUserMessage("s1", "change order");
+    expect(reply?.text).toMatch(/nothing has been submitted/);
+    expect(reply?.awaitingConfirmation).toBe(false);
+    expect(t.bridge.isAwaitingConfirmation("s1")).toBe(false);
+    expect(t.startPayments()).toBe(0);
+  });
+
+  it("saying I confirm pays, like the Confirm button", async () => {
+    const t = await readyToPay();
+    await t.bridge.interceptUserMessage("s1", "I confirm");
+    expect(t.startPayments()).toBe(1);
+  });
 
   it("a plain yes pays; anything else clears the gate and goes to the agent", async () => {
     const t = await readyToPay();
