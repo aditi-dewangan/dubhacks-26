@@ -1462,3 +1462,9 @@ body, .page {
   .voice-orb > span { animation: none !important; }
   .btn, .bubble, .sheet { transition: none; animation: none; }
 }
+
+/* Handing the page to Safari on iPhone */
+.handoff { display: flex; flex-direction: column; gap: 1rem; margin-top: 2rem; padding: 0 1.5rem; }
+.handoff-title { font-size: 1.6rem; font-weight: 800; color: var(--text); letter-spacing: -0.02em; }
+.handoff-body { font-size: 1.05rem; color: var(--text-2); line-height: 1.5; }
+.handoff-stay { width: 100%; min-height: 52px; margin-top: 0.5rem; }
