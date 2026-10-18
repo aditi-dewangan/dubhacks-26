@@ -8,7 +8,7 @@ import { usePhone } from "./store.ts";
 import { createAgentVoice } from "./agentSpeech.ts";
 import { bindVoiceSocket } from "./voiceSocket.ts";
 import { greeting, kioskKind, placeName, placeNameForKind, WELCOME, type Kind } from "./greeting.ts";
-import { speechLog, speechSupport } from "./speech.ts";
+import { speak, speechLog, speechSupport } from "./speech.ts";
 import { enableVoiceFallback, releaseMic, unlockAudio } from "./voiceFallback.ts";
 import { navigate } from "./nav.ts";
 import { permissionSteps, queryPermission, type Device } from "./permissions.ts";
@@ -560,6 +560,7 @@ function ConversationScreen({
   onSend, onMicPress, onEnd, onSettings, onRepeat, onCartReview,
 }: ConvProps) {
   const listRef = useRef<HTMLUListElement>(null);
+  const [memoryOpen, setMemoryOpen] = useState(false);
   const cart = kioskState?.cart;
   const cartCount = cart?.lines.reduce((s, l) => s + l.qty, 0) ?? 0;
   const hasAgentMsg = messages.some(m => m.role === "agent");
@@ -586,6 +587,9 @@ function ConversationScreen({
   return (
     <div className="conv-page" role="main" aria-label="Ordering conversation">
       <header className="conv-header">
+        <button className="btn-icon memory-btn" type="button" onClick={() => setMemoryOpen(true)} aria-label="Open what AllScreen remembers about you">
+          <span aria-hidden="true">☰ Memory</span>
+        </button>
         <span className="conv-brand">{brandName}</span>
         <div className="conv-header-actions">
           <button className="btn-icon" type="button" onClick={onSettings} aria-label="Settings">
@@ -596,6 +600,8 @@ function ConversationScreen({
           </button>
         </div>
       </header>
+
+      {memoryOpen && <MemoryDrawer onClose={() => setMemoryOpen(false)} />}
 
       {cartCount > 0 && cart && (
         <div
@@ -820,6 +826,60 @@ function PayAtReaderScreen({ kioskState, onEnd, onRepeat }: { kioskState: KioskS
 }
 
 // ============================================================
+// MemoryDrawer: a small panel from the left with what this phone remembers
+// ============================================================
+
+function MemoryDrawer({ onClose }: { onClose(): void }) {
+  const stored = usePhone((st) => st.profile);
+  const [profile, setProfile] = useState<PhoneProfile | null>(stored);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    closeRef.current?.focus();
+    void fetchProfile().then((p) => { if (p) setProfile(p); });
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  const prefs = profile?.preferences ?? {};
+  const orders = (profile?.history ?? []).slice(0, 5);
+  const none = !prefs.name && !prefs.diet?.length && !prefs.allergies?.length;
+  return (
+    <div className="drawer-backdrop" onClick={onClose}>
+      <aside className="drawer" role="dialog" aria-modal="true" aria-label="What AllScreen remembers" onClick={(e) => e.stopPropagation()}>
+        <div className="drawer-head">
+          <h2>Memory</h2>
+          <button ref={closeRef} className="btn-icon" type="button" onClick={onClose} aria-label="Close memory">Close</button>
+        </div>
+        <section aria-label="Preferences">
+          <h3>Preferences</h3>
+          {none ? <p>Nothing saved yet. Tell the assistant your name, diet or allergies.</p> : (
+            <ul>
+              {prefs.name && <li>Name: {prefs.name}</li>}
+              {prefs.diet?.length ? <li>Diet: {prefs.diet.join(", ")}</li> : null}
+              {prefs.allergies?.length ? <li>Allergic to: {prefs.allergies.join(", ")}</li> : null}
+            </ul>
+          )}
+        </section>
+        <section aria-label="Past orders">
+          <h3>Past orders</h3>
+          {orders.length === 0 ? <p>No past orders yet.</p> : (
+            <ul>
+              {orders.map((o, i) => (
+                <li key={i}>
+                  <strong>{o.place}</strong> · ${o.total.toFixed(2)}
+                  <br />{o.lines.map((l) => `${l.qty} ${l.name}`).join(", ")}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+        <a className="drawer-link" href="/profile" onClick={(e) => { e.preventDefault(); navigate("/profile"); }}>Edit or delete my profile</a>
+      </aside>
+    </div>
+  );
+}
+
+// ============================================================
 // OrderCompleteScreen
 // ============================================================
 
@@ -834,6 +894,11 @@ function OrderCompleteScreen({ kioskState }: { kioskState: KioskState | null }) 
   const orderNumber = kioskState?.orderNumber;
   const kind = kioskKind(kioskState, usePhone.getState().kioskId);
   const copy = COMPLETE_COPY[kind];
+  useEffect(() => {
+    // Read the number out loud: it's also on the kiosk screen, but the customer may not see it.
+    const digits = orderNumber ? String(orderNumber).split("").join(" ") : "";
+    void speak(`${copy.heading}.${digits ? ` ${copy.number} ${digits}. Again, ${digits}.` : ""}`).catch(() => {});
+  }, [orderNumber, copy.heading, copy.number]);
   return (
     <div className="page" role="main" aria-label={copy.heading}>
       <p className="sr-only" aria-live="polite">
