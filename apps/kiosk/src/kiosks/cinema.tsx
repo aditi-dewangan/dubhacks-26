@@ -117,7 +117,7 @@ function Body({ qrUrl, status }: { qrUrl: string | null; status: ConnectionStatu
       return (
         <section className="welcome">
           <div className="welcome-hero">
-            <img src={imgAmcLogo} alt={brand.name} className="venue-logo" />
+            <p className="eyebrow">Welcome to {brand.name}</p>
             <h1 data-kiosk-title="">Grab your seats.</h1>
             <p className="welcome-sub">Buy tickets, pick seats and skip the box office line.</p>
             <button className="btn-red start-btn" type="button" data-kiosk-id="btn-start" onClick={() => s.go("movies")}>

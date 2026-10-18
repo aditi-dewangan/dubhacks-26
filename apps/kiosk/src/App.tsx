@@ -169,7 +169,7 @@ function FoodWelcome({ qrUrl, status }: { qrUrl: string | null; status: Connecti
   return (
     <section className="welcome">
       <div className="welcome-hero">
-        <img src={imgRaisingCanes} alt="Raising Cane's" className="venue-logo" />
+        <p className="eyebrow">Welcome to Raising Cane&apos;s</p>
         <h1>Skip the line.<br />Order here.</h1>
         <p className="welcome-sub">Chicken fingers, crinkle-cut fries and Cane&apos;s sauce, made fresh when you order.</p>
         <button className="btn-red start-btn" data-kiosk-id={ids.start} type="button" onClick={start}>

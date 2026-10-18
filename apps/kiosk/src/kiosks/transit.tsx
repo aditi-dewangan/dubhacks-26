@@ -102,7 +102,7 @@ function Body({ qrUrl, status }: { qrUrl: string | null; status: ConnectionStatu
       return (
         <section className="welcome">
           <div className="welcome-hero">
-            <img src={imgAmtrakLogo} alt={brand.name} className="venue-logo" />
+            <p className="eyebrow">{brand.name} · Westlake Station</p>
             <h1 data-kiosk-title="">Where are you headed?</h1>
             <p className="welcome-sub">Buy light-rail tickets and day passes. Card or phone payment.</p>
             <button className="btn-red start-btn" type="button" data-kiosk-id="btn-start" onClick={() => s.go("destination")}>

@@ -56,7 +56,7 @@ function Body({ qrUrl, status }: { qrUrl: string | null; status: ConnectionStatu
       return (
         <section className="welcome">
           <div className="welcome-hero">
-            <img src={imgChildrensLogo} alt={brand.name} className="venue-logo" />
+            <p className="eyebrow">Welcome to {brand.name}</p>
             <h1 data-kiosk-title="">Check in for your appointment.</h1>
             <p className="welcome-sub">It takes about a minute. Have your date of birth ready.</p>
             <button className="btn-red start-btn" type="button" data-kiosk-id="btn-start" onClick={() => s.go("identify")}>
