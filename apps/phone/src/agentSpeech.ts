@@ -150,15 +150,19 @@ export function createAgentVoice(
       if (spoke) this.listenAgain(current);
     },
     /** The first thing the customer hears, right after their tap; then the conversation is hands-free. */
-    async greet(text: string) {
+    /**
+     * auto: started without a tap (right after connecting). iPhones may keep the greeting
+     * silent until the first touch, so listening starts whether or not it was heard.
+     */
+    async greet(text: string, options: { auto?: boolean } = {}) {
       if (disposed || !text.trim()) return;
       const current = ++generation;
       callbacks.setSpeaking?.(true);
       let spoke = false;
-      try { await speech.speak(text, "en-US", getRate()); spoke = true; }
-      catch (error) { if (current === generation) report(error); }
+      try { await speech.speak(text, "en-US", getRate(), options.auto ? { startTimeoutMs: 2500 } : {}); spoke = true; }
+      catch (error) { if (current === generation && !options.auto) report(error); }
       finally { if (current === generation) callbacks.setSpeaking?.(false); }
-      if (spoke) this.listenAgain(current);
+      if (spoke || options.auto) this.listenAgain(current);
     },
     /** Opens the mic after speaking, unless something newer happened (new speech, a tap, typing). */
     listenAgain(after: number) {
@@ -189,11 +193,12 @@ export function createAgentVoice(
      * Asks one question and returns what the customer said, without sending it to the assistant
      * (e.g. "Do you want to start ordering?" on the welcome screen). null if nothing was heard.
      */
-    async ask(question: string): Promise<string | null> {
+    /** auto: asked without a tap; if the phone won't speak yet (iPhone), listen anyway. */
+    async ask(question: string, options: { auto?: boolean } = {}): Promise<string | null> {
       if (disposed) return null;
       const current = ++generation;
       callbacks.setSpeaking?.(true);
-      try { await speech.speak(question, "en-US", getRate()); }
+      try { await speech.speak(question, "en-US", getRate(), options.auto ? { startTimeoutMs: 2500 } : {}); }
       catch { /* speaking failed; still listen */ }
       finally { if (current === generation) callbacks.setSpeaking?.(false); }
       if (current !== generation || disposed) return null;

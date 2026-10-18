@@ -136,7 +136,8 @@ export function createSpeechController(environment: () => SpeechEnvironment = br
         throw error;
       });
     },
-    speak(text: string, lang = "en-US", rate = 1.0): Promise<void> {
+    /** startTimeoutMs: give up if speech hasn't started by then (iPhones stay silent until the first tap). */
+    speak(text: string, lang = "en-US", rate = 1.0, options: { startTimeoutMs?: number } = {}): Promise<void> {
       stopListening(); stopSpeaking();
       if (!text.trim()) return Promise.resolve();
       const { synthesis, utterance: Utterance } = environment();
@@ -145,11 +146,13 @@ export function createSpeechController(environment: () => SpeechEnvironment = br
         const utterance = new Utterance(text);
         let settled = false;
         let timer: ReturnType<typeof setTimeout> | undefined;
+        let startTimer: ReturnType<typeof setTimeout> | undefined;
         const finish = (error?: SpeechError) => {
           if (settled) return;
           settled = true;
           clearTimeout(timer);
-          utterance.onend = utterance.onerror = null;
+          clearTimeout(startTimer);
+          utterance.onend = utterance.onerror = utterance.onstart = null;
           cancelSpeaking = undefined;
           if (error) reject(error); else resolve();
         };
@@ -162,6 +165,10 @@ export function createSpeechController(environment: () => SpeechEnvironment = br
         utterance.onend = () => finish();
         utterance.onerror = () => finish(new SpeechError("failed"));
         timer = setTimeout(() => { finish(new SpeechError("timeout")); synthesis.cancel(); }, 60_000);
+        if (options.startTimeoutMs) {
+          utterance.onstart = () => clearTimeout(startTimer);
+          startTimer = setTimeout(() => { finish(new SpeechError("failed")); synthesis.cancel(); }, options.startTimeoutMs);
+        }
         try { synthesis.speak(utterance); } catch { finish(new SpeechError("failed")); }
       });
     },

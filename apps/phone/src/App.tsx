@@ -9,8 +9,8 @@ import { createAgentVoice } from "./agentSpeech.ts";
 import { bindVoiceSocket } from "./voiceSocket.ts";
 import { greeting, placeName, placeNameForKind, wantsToStart } from "./greeting.ts";
 import { speechSupport } from "./speech.ts";
-import { enableVoiceFallback, releaseMic, unlockAudio } from "./voiceFallback.ts";
-import { permissionSteps, queryPermission, type Device } from "./permissions.ts";
+import { enableVoiceFallback, prepareMic, releaseMic, unlockAudio } from "./voiceFallback.ts";
+import { iosNonSafari, permissionSteps, queryPermission, type Device } from "./permissions.ts";
 import { CAMERA_PROBLEM_TEXT, CameraError, startQrScanner, type CameraProblem } from "./qrScanner.ts";
 
 let _id = 0;
@@ -73,6 +73,7 @@ export function App() {
   const [settingsOpen,  setSettingsOpen]  = useState(false);
   const [cartReviewOpen, setCartReviewOpen] = useState(false);
   const [permissionHelp, setPermissionHelp] = useState<Device | null>(null);
+  const askToStartRef = useRef<(auto?: boolean) => void>(() => {});
 
   // Keep speech rate accessible to agentVoice without re-creating it on every render
   const speechRateRef = useRef(speechRate);
@@ -132,7 +133,8 @@ export function App() {
         socket.on("connect", () => {
           if (cancelled) return;
           store.setPhase("active");
-          voice.speakFeedback("Connected to kiosk. Tap Start voice ordering to begin.");
+          // Voice ordering turns itself on: greet, then listen. The browser asks for the mic if needed.
+          if (!usePhone.getState().orderingStarted && speechSupport().recognition) askToStartRef.current(true);
         });
         socket.on("connect_error", e => {
           if (!cancelled) store.setError("connect_failed", e.message);
@@ -195,7 +197,8 @@ export function App() {
   }, []);
 
   // Opens the chat. With voice, the greeting is spoken and the mic then reopens by itself after every reply.
-  const enterChat = useCallback((withVoice: boolean) => {
+  // auto: started without a tap (iPhones may keep the greeting silent until the first touch).
+  const enterChat = useCallback((withVoice: boolean, auto = false) => {
     const store = usePhone.getState();
     store.setOrderingStarted(true);
     const hello = greeting(store.kioskState, store.profile);
@@ -203,23 +206,38 @@ export function App() {
     if (withVoice) {
       unlockAudio(); // iPhones only allow recording audio after a tap
       voiceRef.current?.setEnabled(true, { handsFree: true });
-      void voiceRef.current?.greet(hello);
+      void voiceRef.current?.greet(hello, { auto });
     }
+  }, []);
+
+  // The first touch anywhere lets iPhones play speech and record (they block both until a tap).
+  useEffect(() => {
+    const unlock = () => unlockAudio();
+    document.addEventListener("pointerdown", unlock, { once: true });
+    return () => document.removeEventListener("pointerdown", unlock);
   }, []);
 
   // The customer's first tap on the welcome screen (browsers only allow speech after a tap):
   // the assistant asks whether to start, and a yes opens the chat.
-  const askToStart = useCallback(async () => {
+  // auto: runs by itself right after connecting, so the mic turns on without a tap.
+  const askToStart = useCallback(async (auto = false) => {
     const voice = voiceRef.current;
     if (!voice) { enterChat(false); return; }
     unlockAudio();
+    // Ask for the mic now. Already blocked: show how to turn it on instead of listening.
+    const mic = await queryPermission("microphone");
+    if (mic === "denied" || (iosNonSafari() && (await prepareMic()) === "denied")) {
+      setPermissionHelp("microphone");
+      return;
+    }
     voice.setEnabled(true);
     setWelcome("asking");
-    const answer = await voice.ask(`Welcome to ${placeName(usePhone.getState().kioskState)}. Do you want to start ordering?`);
-    if (answer && wantsToStart(answer)) { setWelcome("idle"); enterChat(true); return; }
+    const answer = await voice.ask(`Welcome to ${placeName(usePhone.getState().kioskState)}. Do you want to start ordering?`, { auto });
+    if (answer && wantsToStart(answer)) { setWelcome("idle"); enterChat(true, auto); return; }
     setWelcome(answer ? "declined" : "unheard");
     if (answer) void voice.speakFeedback("Okay. Tap Start ordering whenever you're ready.");
   }, [enterChat]);
+  askToStartRef.current = (auto) => { void askToStart(auto); };
 
   // Stop the conversation loop on screens where voice ordering doesn't apply (Nidhi).
   useEffect(() => {
@@ -228,6 +246,20 @@ export function App() {
       voiceRef.current?.setEnabled(false);
     }
   }, [kioskState?.screen]);
+
+  const micHelp = permissionHelp && (
+    <PermissionHelpSheet
+      device={permissionHelp}
+      onClose={() => setPermissionHelp(null)}
+      onRetry={() => {
+        setPermissionHelp(null);
+        unlockAudio();
+        if (!usePhone.getState().orderingStarted) { void askToStart(); return; }
+        voiceRef.current?.setEnabled(true, { handsFree: true });
+        void voiceRef.current?.listenAndSend();
+      }}
+    />
+  );
 
   // ---- Screen routing ----
   if (phase === "init") return null;
@@ -260,6 +292,7 @@ export function App() {
         onProfile={() => setSettingsOpen(true)}
       />
       {settingsOpen && <SettingsSheet onClose={() => setSettingsOpen(false)} />}
+      {micHelp}
     </>
   );
 
@@ -279,18 +312,7 @@ export function App() {
         onCartReview={() => setCartReviewOpen(true)}
       />
       {settingsOpen && <SettingsSheet onClose={() => setSettingsOpen(false)} />}
-      {permissionHelp && (
-        <PermissionHelpSheet
-          device={permissionHelp}
-          onClose={() => setPermissionHelp(null)}
-          onRetry={() => {
-            setPermissionHelp(null);
-            unlockAudio();
-            voiceRef.current?.setEnabled(true, { handsFree: true });
-            void voiceRef.current?.listenAndSend();
-          }}
-        />
-      )}
+      {micHelp}
       {cartReviewOpen && kioskState?.cart && (
         <CartReviewSheet cart={kioskState.cart} onClose={() => setCartReviewOpen(false)} />
       )}
@@ -319,8 +341,7 @@ function parseQrUrl(raw: string): string | null {
 export function QrScannerScreen() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const stopRef = useRef<(() => void) | null>(null);
-  // "idle": waiting for a tap, so we don't prompt for the camera every time the page opens.
-  const [camera, setCamera] = useState<"checking" | "idle" | "starting" | "on" | CameraProblem>("checking");
+  const [camera, setCamera] = useState<"starting" | "on" | CameraProblem>("starting");
   const [helpOpen, setHelpOpen] = useState(false);
   const [found, setFound] = useState(false);
   const [codeInput, setCodeInput] = useState("");
@@ -349,16 +370,17 @@ export function QrScannerScreen() {
 
   useEffect(() => {
     let alive = true;
-    // Already allowed: open the camera straight away, no prompt. Otherwise wait for a tap.
+    // Open the camera automatically. Already allowed: it just shows. Not asked yet: the browser asks.
+    // Blocked: don't bother the browser, show how to turn it on.
     void queryPermission("camera").then((status) => {
       if (!alive) return;
-      if (status === "granted") void startCamera();
-      else setCamera(status === "denied" ? "denied" : "idle");
+      if (status === "denied") { setCamera("denied"); setHelpOpen(true); }
+      else void startCamera();
     });
     return () => { alive = false; stopRef.current?.(); stopRef.current = null; };
   }, [startCamera]);
 
-  const cameraProblem = camera !== "checking" && camera !== "idle" && camera !== "starting" && camera !== "on" ? camera : null;
+  const cameraProblem = camera !== "starting" && camera !== "on" ? camera : null;
   const canRetry = cameraProblem && cameraProblem !== "insecure" && cameraProblem !== "unsupported" && cameraProblem !== "not_found";
 
   // Kiosk codes: FD (food), CN (cinema), TR (transit), HP (hospital) + 5 digits, e.g. FD48213.
@@ -397,13 +419,6 @@ export function QrScannerScreen() {
                 <div className="scanner-corner scanner-corner-bl" />
                 <div className="scanner-corner scanner-corner-br" />
                 <div className="scanner-line" />
-              </div>
-            )}
-            {camera === "idle" && (
-              <div className="scanner-placeholder">
-                <button type="button" className="btn btn-primary scanner-start" onClick={startCamera}>
-                  <CameraIcon /> Scan with camera
-                </button>
               </div>
             )}
             {camera === "starting" && (
@@ -1385,15 +1400,6 @@ function PermissionHelpSheet({ device, onClose, onRetry }: { device: Device; onC
         </div>
       </div>
     </div>
-  );
-}
-
-function CameraIcon() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M3 8a2 2 0 0 1 2-2h2l2-2h6l2 2h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-      <circle cx="12" cy="13" r="3.5" />
-    </svg>
   );
 }
 
