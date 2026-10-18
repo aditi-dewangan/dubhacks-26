@@ -1403,8 +1403,10 @@ body, .page {
   background: rgba(255, 255, 255, 0.82); border: 1px solid var(--border); box-shadow: var(--shadow-md);
 }
 .profile-page { gap: 1rem; padding-bottom: 2rem; }
+.profile-page .welcome-sub { margin: 0; max-width: none; }
+.profile-page > .panel { margin: 0 1.5rem; }
 .profile-section {
-  margin: 0 1.25rem; padding: 1.25rem; border-radius: var(--radius-card);
+  margin: 0 1.5rem; padding: 1.25rem; border-radius: var(--radius-card);
   background: rgba(255, 255, 255, 0.86); border: 1px solid var(--border); box-shadow: var(--shadow-md);
 }
 .profile-section .profile-editor { border-bottom: none; padding: 0; }

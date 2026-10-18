@@ -31,23 +31,23 @@ function applyProfile(p: PhoneProfile) {
 type EndInfo = { heading: string; body: string; recovery?: string };
 const SESSION_END: Record<SessionEndReason, EndInfo> = {
   order_complete:     { heading: "Order placed",       body: "Your order is confirmed." },
-  idle_timeout:       { heading: "Session timed out",  body: "Your session ended due to inactivity.",    recovery: "Tap the kiosk tag to start a new session." },
+  idle_timeout:       { heading: "Session timed out",  body: "Your session ended due to inactivity.",    recovery: "Scan the kiosk's QR code to start a new session." },
   staff_ended:        { heading: "Session ended",      body: "A staff member ended the session.",         recovery: "Please ask staff if you need help." },
-  phone_disconnected: { heading: "Disconnected",       body: "Your phone lost its connection.",           recovery: "Tap the kiosk tag to reconnect." },
-  user_ended:         { heading: "Session ended",      body: "You ended this session.",                   recovery: "Tap the kiosk tag to start a new session." },
+  phone_disconnected: { heading: "Disconnected",       body: "Your phone lost its connection.",           recovery: "Scan the kiosk's QR code to reconnect." },
+  user_ended:         { heading: "Session ended",      body: "You ended this session.",                   recovery: "Scan the kiosk's QR code to start a new session." },
   kiosk_disconnected: { heading: "Kiosk disconnected", body: "The kiosk lost its connection.",            recovery: "Please ask a staff member for help." },
 };
 
 type ErrorInfo = { heading: string; body: string; recovery: string; canRetry: boolean };
 const ERROR_INFO: Record<string, ErrorInfo> = {
-  kiosk_busy:     { heading: "Kiosk is busy",          body: "This kiosk already has an active session.",           recovery: "Wait a moment, then tap the tag again.",             canRetry: false },
-  code_expired:   { heading: "Code has expired",       body: "This connection code has expired.",                   recovery: "Tap the kiosk tag again for a fresh code.",          canRetry: false },
+  kiosk_busy:     { heading: "Kiosk is busy",          body: "This kiosk already has an active session.",           recovery: "Wait a moment, then try again.",                     canRetry: true  },
+  code_expired:   { heading: "Code has expired",       body: "This connection code has expired.",                   recovery: "Scan the kiosk's QR code again for a fresh code.",   canRetry: false },
   kiosk_offline:  { heading: "Kiosk is offline",       body: "This kiosk is currently offline.",                    recovery: "Ask a staff member for help.",                       canRetry: false },
   connect_failed: { heading: "Connection failed",      body: "Could not reach the server.",                         recovery: "Check your internet connection and try again.",      canRetry: true  },
-  bad_url:        { heading: "Link not recognised",    body: "This link does not contain a valid connection code.", recovery: "Tap the kiosk tag again for a fresh link.",          canRetry: false },
+  bad_url:        { heading: "Link not recognised",    body: "This link does not contain a valid connection code.", recovery: "Scan the kiosk's QR code again for a fresh link.",   canRetry: false },
   code_not_found: { heading: "Code not found",         body: "We couldn't find a kiosk with that code.",           recovery: "Check the code on the kiosk and try again. Codes look like FD12345.", canRetry: false },
   too_many_attempts: { heading: "Too many tries",      body: "Too many wrong codes were entered.",                  recovery: "Wait a few minutes, then try again or ask staff for help.", canRetry: false },
-  unknown:        { heading: "Something went wrong",   body: "An unexpected error occurred.",                       recovery: "Try tapping the kiosk tag again, or ask for help.", canRetry: false },
+  unknown:        { heading: "Something went wrong",   body: "An unexpected error occurred.",                       recovery: "Try scanning the kiosk's QR code again, or ask for help.", canRetry: false },
 };
 
 // ============================================================
@@ -263,7 +263,7 @@ export function App() {
 
   if (phase === "ended") {
     if (endReason === "order_complete") return <OrderCompleteScreen kioskState={kioskState} />;
-    const info = SESSION_END[endReason as SessionEndReason] ?? { heading: "Session ended", body: "Your session has ended.", recovery: "Tap the kiosk tag to start again." };
+    const info = SESSION_END[endReason as SessionEndReason] ?? { heading: "Session ended", body: "Your session has ended.", recovery: "Scan the kiosk's QR code to start again." };
     return <SessionEndedScreen heading={info.heading} body={info.body} recovery={info.recovery} />;
   }
 
@@ -829,8 +829,20 @@ function SessionEndedScreen({ heading, body, recovery }: EndInfo) {
         <h1 tabIndex={-1}>{heading}</h1>
         <p>{body}</p>
         {recovery && <div className="panel panel-lavender">{recovery}</div>}
+        <div className="centred-actions">
+          <ScanAgainButton />
+        </div>
       </div>
     </div>
+  );
+}
+
+/** Back to the scanner (and code entry) without a reload, so the camera isn't asked for again. */
+function ScanAgainButton({ primary = true }: { primary?: boolean }) {
+  return (
+    <button className={primary ? "btn btn-primary" : "btn btn-outline"} type="button" onClick={() => navigate("/")}>
+      Scan a kiosk
+    </button>
   );
 }
 
@@ -857,6 +869,7 @@ function CantConnectScreen({ code, detail }: { code: string; detail?: string }) 
               Try again
             </button>
           )}
+          <ScanAgainButton primary={!info.canRetry} />
         </div>
       </div>
     </div>
