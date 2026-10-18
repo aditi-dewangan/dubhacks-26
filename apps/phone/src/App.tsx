@@ -14,6 +14,10 @@ import { navigate } from "./nav.ts";
 import { permissionSteps, queryPermission, type Device } from "./permissions.ts";
 import { CAMERA_PROBLEM_TEXT, CameraError, startQrScanner, type CameraProblem } from "./qrScanner.ts";
 import { MENU_ITEMS } from "./menuData.ts";
+import imgAmcLogo       from "./assets/amc-logo.png";
+import imgAmtrakLogo    from "./assets/amtrak-logo.png";
+import imgChildrensLogo from "./assets/childrens-logo.jpg";
+import imgBoxCombo      from "./assets/menu/box_combo_new.avif";
 
 let _id = 0;
 const uid = () => String(++_id);
@@ -1499,19 +1503,147 @@ function EyeOffIcon() {
 }
 
 // ============================================================
+// VenuePickerScreen
+// ============================================================
+
+interface VenueInfo {
+  id: string;
+  name: string;
+  logo: string;
+  logoIcon?: React.ReactNode;
+  logoStyle?: React.CSSProperties;
+  color: string;
+  colorLight: string;
+  tagline: string;
+  services: Array<{ icon: string; label: string }>;
+}
+
+function FoodVenueIcon() {
+  return (
+    <svg width="64" height="64" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+      <circle cx="32" cy="38" r="18" fill="#FFF7ED" stroke="#F97316" strokeWidth="2.5" />
+      <ellipse cx="21" cy="36" rx="5" ry="10" fill="#F97316" transform="rotate(-20 21 36)" />
+      <ellipse cx="32" cy="34" rx="5" ry="11" fill="#F97316" />
+      <ellipse cx="43" cy="36" rx="5" ry="10" fill="#F97316" transform="rotate(20 43 36)" />
+      <ellipse cx="32" cy="50" rx="10" ry="4" fill="#FDE68A" stroke="#F97316" strokeWidth="1.5" />
+      <path d="M28 50 Q32 56 36 50" stroke="#F97316" strokeWidth="1.5" fill="none" />
+    </svg>
+  );
+}
+
+const VENUES: VenueInfo[] = [
+  {
+    id: "food",
+    name: "Food",
+    logo: imgBoxCombo,
+    logoIcon: <FoodVenueIcon />,
+    color: "#F97316",
+    colorLight: "#FFF7ED",
+    tagline: "Order meals at any restaurant",
+    services: [],
+  },
+  {
+    id: "amc",
+    name: "AMC",
+    logo: imgAmcLogo,
+    color: "#CC0000",
+    colorLight: "#FFF5F5",
+    tagline: "Tickets, concessions & more",
+    services: [
+      { icon: "🎬", label: "Buy Tickets" },
+      { icon: "🍿", label: "Concessions" },
+      { icon: "♿", label: "Accessibility" },
+      { icon: "🎁", label: "Gift Cards" },
+    ],
+  },
+  {
+    id: "childrens",
+    name: "Children's Hospital",
+    logo: imgChildrensLogo,
+    logoStyle: { maxWidth: "145px", maxHeight: "80px" },
+    color: "#0077C8",
+    colorLight: "#EFF6FF",
+    tagline: "Wayfinding, appointments & info",
+    services: [
+      { icon: "🗺️", label: "Wayfinding" },
+      { icon: "📅", label: "Appointments" },
+      { icon: "🍽️", label: "Cafeteria" },
+      { icon: "ℹ️", label: "Information" },
+    ],
+  },
+  {
+    id: "amtrak",
+    name: "Amtrak",
+    logo: imgAmtrakLogo,
+    color: "#1B3A6B",
+    colorLight: "#EEF2FF",
+    tagline: "Tickets, schedules & boarding",
+    services: [
+      { icon: "🎫", label: "Buy Tickets" },
+      { icon: "📋", label: "Schedules" },
+      { icon: "🧳", label: "Baggage" },
+      { icon: "🛤️", label: "Track Status" },
+    ],
+  },
+];
+
+function VenuePickerScreen({ onSelect }: { onSelect: (v: VenueInfo) => void }) {
+  return (
+    <div className="page venue-picker" role="main">
+      <header className="venue-picker-header">
+        <AppLogo />
+        <div className="venue-picker-heading">
+          <h1>Where are you?</h1>
+          <p className="venue-picker-sub">Choose your venue to get started</p>
+        </div>
+      </header>
+
+      <div className="venue-grid">
+        {VENUES.map(v => (
+          <button
+            key={v.id}
+            className="venue-card"
+            type="button"
+            onClick={() => onSelect(v)}
+            style={{ "--venue-color": v.color, "--venue-color-light": v.colorLight } as React.CSSProperties}
+          >
+            <div className="venue-card-img-wrap">
+              {v.logoIcon
+                ? <div className="venue-card-logo-icon">{v.logoIcon}</div>
+                : <img
+                    src={v.logo}
+                    alt={v.name}
+                    className="venue-card-logo"
+                    style={v.logoStyle}
+                  />
+              }
+            </div>
+            <div className="venue-card-footer">
+              <p className="venue-card-name">{v.name}</p>
+              <p className="venue-card-tagline">{v.tagline}</p>
+            </div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
 // DemoApp — dev-only screen preview (mounted from main.tsx
 // when URL contains ?demo).  Shows every screen with mock data
 // so you can review designs without a live server.
 // ============================================================
 
 const DEMO_SCREENS: { id: string; label: string }[] = [
-  { id: "scanner",  label: "Home" },
+  { id: "venues", label: "Home" },
   { id: "settings", label: "Settings" },
 ];
 
 export function DemoApp() {
-  const initialScreen = new URLSearchParams(window.location.search).get("demo") || "scanner";
+  const initialScreen = new URLSearchParams(window.location.search).get("demo") || "venues";
   const [screen, setScreen] = useState(initialScreen);
+  const [selectedVenue, setSelectedVenue] = useState<VenueInfo | null>(null);
 
   useEffect(() => {
     document.documentElement.classList.add("demo-mode");
@@ -1530,8 +1662,14 @@ export function DemoApp() {
           </div>
         );
       case "scanner":
-      default:
         return <QrScannerScreen />;
+      case "venues":
+      default:
+        return (
+          <VenuePickerScreen
+            onSelect={v => { setSelectedVenue(v); setScreen("scanner"); }}
+          />
+        );
     }
   };
 
