@@ -19,7 +19,7 @@ export interface Brand {
 
 export const BRANDS: Record<KioskKind, Brand> = {
   food: { name: "Raising Cane's", meta: "Chicken fingers · Order at the kiosk", mark: "RC", color: "#c8102e", dark: "#a00d25", task: "ordering", pageTitle: "Raising Cane's Kiosk" },
-  clinic: { name: "Evergreen Family Clinic", meta: "Patient check-in", mark: "EF", color: "#0f766e", dark: "#0b5a54", task: "checking in", pageTitle: "Evergreen Clinic Check-in" },
+  clinic: { name: "Seattle Children's Hospital", meta: "Patient check-in", mark: "SC", color: "#0077C8", dark: "#005fa3", task: "checking in", pageTitle: "Seattle Children's Check-in" },
   cinema: { name: "Starlight Cinemas", meta: "Tickets · Screens 1–8", mark: "SC", color: "#6d28d9", dark: "#5b21b6", task: "buying tickets", pageTitle: "Starlight Cinemas Tickets" },
   transit: { name: "MetroLink", meta: "Ticket machine · Westlake Station", mark: "ML", color: "#047857", dark: "#065f46", task: "buying a ticket", pageTitle: "MetroLink Ticket Machine" },
 };
