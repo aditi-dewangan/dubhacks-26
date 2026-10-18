@@ -9,7 +9,8 @@ import { createAgentVoice } from "./agentSpeech.ts";
 import { bindVoiceSocket } from "./voiceSocket.ts";
 import { greeting } from "./greeting.ts";
 import { speechSupport } from "./speech.ts";
-import { enableVoiceFallback, unlockAudio } from "./voiceFallback.ts";
+import { enableVoiceFallback, releaseMic, unlockAudio } from "./voiceFallback.ts";
+import { permissionSteps, queryPermission, type Device } from "./permissions.ts";
 import { CAMERA_PROBLEM_TEXT, CameraError, startQrScanner, type CameraProblem } from "./qrScanner.ts";
 
 let _id = 0;
@@ -61,6 +62,7 @@ export function App() {
   const [voiceListening, setVoiceListening] = useState(false);
   const [settingsOpen,  setSettingsOpen]  = useState(false);
   const [cartReviewOpen, setCartReviewOpen] = useState(false);
+  const [permissionHelp, setPermissionHelp] = useState<Device | null>(null);
 
   // Keep speech rate accessible to agentVoice without re-creating it on every render
   const speechRateRef = useRef(speechRate);
@@ -101,7 +103,13 @@ export function App() {
           },
           showTranscript: (_text) => { /* sendText adds the bubble */ },
           // Voice problems ("Tap the microphone to answer") appear in the chat, so they're seen and announced.
-          showStatus: (msg) => usePhone.getState().pushMessage({ id: uid(), role: "agent", text: msg, awaitingConfirmation: false }),
+          showStatus: (msg) => {
+            // Don't repeat the same notice over and over.
+            const last = usePhone.getState().messages.at(-1);
+            if (last?.role === "agent" && last.text === msg) return;
+            usePhone.getState().pushMessage({ id: uid(), role: "agent", text: msg, awaitingConfirmation: false });
+          },
+          permissionDenied: () => setPermissionHelp("microphone"),
           setSpeaking: (v) => setAgentSpeaking(v),
           setListening: (v) => setVoiceListening(v),
         }, () => speechRateRef.current);
@@ -128,6 +136,7 @@ export function App() {
           if (!usePhone.getState().orderingStarted) store.setOrderingStarted(true);
         });
         socket.on("session:ended", info => {
+          releaseMic();
           store.setEnded(info.reason ?? null);
           socket!.disconnect();
         });
@@ -232,6 +241,18 @@ export function App() {
         onCartReview={() => setCartReviewOpen(true)}
       />
       {settingsOpen && <SettingsSheet onClose={() => setSettingsOpen(false)} />}
+      {permissionHelp && (
+        <PermissionHelpSheet
+          device={permissionHelp}
+          onClose={() => setPermissionHelp(null)}
+          onRetry={() => {
+            setPermissionHelp(null);
+            unlockAudio();
+            voiceRef.current?.setEnabled(true, { handsFree: true });
+            void voiceRef.current?.listenAndSend();
+          }}
+        />
+      )}
       {cartReviewOpen && kioskState?.cart && (
         <CartReviewSheet cart={kioskState.cart} onClose={() => setCartReviewOpen(false)} />
       )}
@@ -260,7 +281,9 @@ function parseQrUrl(raw: string): string | null {
 function QrScannerScreen() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const stopRef = useRef<(() => void) | null>(null);
-  const [camera, setCamera] = useState<"starting" | "on" | CameraProblem>("starting");
+  // "idle": waiting for a tap, so we don't prompt for the camera every time the page opens.
+  const [camera, setCamera] = useState<"checking" | "idle" | "starting" | "on" | CameraProblem>("checking");
+  const [helpOpen, setHelpOpen] = useState(false);
   const [found, setFound] = useState(false);
   const [codeInput, setCodeInput] = useState("");
   const [codeError, setCodeError] = useState("");
@@ -280,16 +303,24 @@ function QrScannerScreen() {
       });
       setCamera("on");
     } catch (err) {
-      setCamera(err instanceof CameraError ? err.problem : "failed");
+      const problem = err instanceof CameraError ? err.problem : "failed";
+      setCamera(problem);
+      if (problem === "denied") setHelpOpen(true);
     }
   }, []);
 
   useEffect(() => {
-    startCamera();
-    return () => { stopRef.current?.(); stopRef.current = null; };
+    let alive = true;
+    // Already allowed: open the camera straight away, no prompt. Otherwise wait for a tap.
+    void queryPermission("camera").then((status) => {
+      if (!alive) return;
+      if (status === "granted") void startCamera();
+      else setCamera(status === "denied" ? "denied" : "idle");
+    });
+    return () => { alive = false; stopRef.current?.(); stopRef.current = null; };
   }, [startCamera]);
 
-  const cameraProblem = camera !== "starting" && camera !== "on" ? camera : null;
+  const cameraProblem = camera !== "checking" && camera !== "idle" && camera !== "starting" && camera !== "on" ? camera : null;
   const canRetry = cameraProblem && cameraProblem !== "insecure" && cameraProblem !== "unsupported" && cameraProblem !== "not_found";
 
   // Kiosk codes: FD (food), CN (cinema), TR (transit), HP (hospital) + 5 digits, e.g. FD48213.
@@ -330,6 +361,13 @@ function QrScannerScreen() {
                 <div className="scanner-line" />
               </div>
             )}
+            {camera === "idle" && (
+              <div className="scanner-placeholder">
+                <button type="button" className="btn btn-primary scanner-start" onClick={startCamera}>
+                  <CameraIcon /> Scan with camera
+                </button>
+              </div>
+            )}
             {camera === "starting" && (
               <div className="scanner-placeholder" role="status">
                 <span>Opening camera…</span>
@@ -342,6 +380,11 @@ function QrScannerScreen() {
                 {canRetry && (
                   <button type="button" className="btn btn-primary scanner-retry" onClick={startCamera}>
                     Turn on camera
+                  </button>
+                )}
+                {cameraProblem === "denied" && (
+                  <button type="button" className="scanner-help-link" onClick={() => setHelpOpen(true)}>
+                    How do I allow the camera?
                   </button>
                 )}
               </div>
@@ -381,6 +424,9 @@ function QrScannerScreen() {
         </form>
 
       </div>
+      {helpOpen && (
+        <PermissionHelpSheet device="camera" onClose={() => setHelpOpen(false)} onRetry={() => { setHelpOpen(false); void startCamera(); }} />
+      )}
     </div>
   );
 }
@@ -1065,6 +1111,57 @@ function SettingsIcon() {
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
       <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="2" />
       <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" stroke="currentColor" strokeWidth="2" />
+    </svg>
+  );
+}
+
+function PermissionHelpSheet({ device, onClose, onRetry }: { device: Device; onClose(): void; onRetry(): void }) {
+  const retryRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => { retryRef.current?.focus(); }, []);
+  const name = device === "camera" ? "camera" : "microphone";
+  const steps = permissionSteps(device);
+  return (
+    <div
+      className="sheet-backdrop"
+      role="alertdialog"
+      aria-modal="true"
+      aria-labelledby="perm-title"
+      aria-describedby="perm-body"
+      onKeyDown={e => { if (e.key === "Escape") onClose(); }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="sheet">
+        <div className="sheet-handle" aria-hidden="true" />
+        <div className="sheet-header">
+          <h2 className="sheet-title" id="perm-title">Turn on the {name}</h2>
+          <button className="btn-icon" type="button" onClick={onClose} aria-label="Close">
+            <CloseIcon />
+          </button>
+        </div>
+        <div className="sheet-body">
+          <p id="perm-body" className="perm-body">
+            Your browser blocked the {name}. A website can't change this setting, but it only takes a moment:
+          </p>
+          <ol className="perm-steps">
+            {steps.map((step, i) => <li key={i}>{step}</li>)}
+          </ol>
+          <button ref={retryRef} className="btn btn-primary perm-retry" type="button" onClick={onRetry}>
+            Try again
+          </button>
+          <button className="btn btn-outline perm-later" type="button" onClick={onClose}>
+            {device === "camera" ? "Enter the code instead" : "Type instead"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CameraIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M3 8a2 2 0 0 1 2-2h2l2-2h6l2 2h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+      <circle cx="12" cy="13" r="3.5" />
     </svg>
   );
 }

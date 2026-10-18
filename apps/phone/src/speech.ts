@@ -27,6 +27,10 @@ export interface SpeechEnvironment {
   recognition?: new () => Recognition;
   /** Used when `recognition` is missing or the browser refuses it (Chrome on iPhone). */
   fallback?: SpeechFallback;
+  /** Skip the browser's recognition and go straight to the fallback (it's known not to work here). */
+  preferFallback?: boolean;
+  /** Called when the browser's recognition turned out not to work, so later visits skip it. */
+  rememberFallback?(): void;
   synthesis?: Pick<SpeechSynthesis, "cancel" | "speak"> & Partial<Pick<SpeechSynthesis, "getVoices">>;
   utterance?: new (text: string) => SpeechSynthesisUtterance;
 }
@@ -79,10 +83,10 @@ export function createSpeechController(environment: () => SpeechEnvironment = br
           .map((result) => result[0].transcript).join(" ").trim();
         if (text) finish(text);
       };
-      recognition.onerror = ({ error }) => finish(undefined, new SpeechError(
+      recognition.onerror = ({ error }) => finish(undefined, Object.assign(new SpeechError(
         error === "not-allowed" || error === "service-not-allowed" ? "permission_denied" :
         error === "audio-capture" ? "audio_unavailable" : error === "no-speech" ? "no_speech" :
-        error === "network" ? "network" : error === "aborted" ? "cancelled" : "failed"));
+        error === "network" ? "network" : error === "aborted" ? "cancelled" : "failed"), { browserError: error }));
       recognition.onend = () => finish(undefined, new SpeechError("no_speech"));
       timer = setTimeout(() => finish(undefined, new SpeechError("timeout")), options.timeoutMs ?? 15_000);
       try { recognition.start(); } catch { finish(undefined, new SpeechError("failed")); }
@@ -112,15 +116,21 @@ export function createSpeechController(environment: () => SpeechEnvironment = br
     stop() { stopListening(); stopSpeaking(); },
     listen(options: ListenOptions = {}): Promise<string> {
       stopListening(); stopSpeaking();
-      const { recognition, fallback } = environment();
-      if (fallback && (useFallback || !recognition)) return listenFallback(fallback, options);
+      const env = environment();
+      const { recognition, fallback } = env;
+      if (fallback && (useFallback || env.preferFallback || !recognition)) return listenFallback(fallback, options);
       if (!recognition) return Promise.reject(new SpeechError("unsupported"));
       const id = listenId;
       return listenBrowser(recognition, options).catch((error: unknown) => {
         // Chrome on iPhone reports "service-not-allowed" even when the mic itself is allowed.
         const code = error instanceof SpeechError ? error.code : "failed";
         if (fallback && id === listenId && (code === "permission_denied" || code === "failed" || code === "network")) {
-          useFallback = true;
+          // "not-allowed" can just mean Safari wanted a tap first, so only this answer uses the fallback.
+          // Anything else means the browser's recognition doesn't work here: skip it from now on.
+          if ((error as { browserError?: string }).browserError !== "not-allowed") {
+            useFallback = true;
+            env.rememberFallback?.();
+          }
           return listenFallback(fallback, options);
         }
         throw error;
@@ -158,6 +168,7 @@ export function createSpeechController(environment: () => SpeechEnvironment = br
   };
 }
 
+const FALLBACK_KEY = "allscreen.speechFallback";
 let registeredFallback: SpeechFallback | null = null;
 /** Turn the speech fallback on (or off with null) for the browser controller. */
 export function setSpeechFallback(fallback: SpeechFallback | null) { registeredFallback = fallback; }
@@ -165,8 +176,15 @@ export function setSpeechFallback(fallback: SpeechFallback | null) { registeredF
 function browserEnvironment(): SpeechEnvironment {
   if (typeof window === "undefined") return {};
   const browser = window as Window & { SpeechRecognition?: new () => Recognition; webkitSpeechRecognition?: new () => Recognition };
+  // Chrome, Firefox and Edge on iPhone expose recognition but iOS always refuses it.
+  const ua = navigator.userAgent;
+  const iosOther = /iPhone|iPad|iPod/.test(ua) && /CriOS|FxiOS|EdgiOS/.test(ua);
+  let remembered = false;
+  try { remembered = localStorage.getItem(FALLBACK_KEY) === "1"; } catch { /* storage blocked */ }
   return { recognition: browser.SpeechRecognition ?? browser.webkitSpeechRecognition,
     fallback: registeredFallback ?? undefined,
+    preferFallback: iosOther || remembered,
+    rememberFallback() { try { localStorage.setItem(FALLBACK_KEY, "1"); } catch { /* storage blocked */ } },
     synthesis: window.speechSynthesis, utterance: window.SpeechSynthesisUtterance };
 }
 // Chrome loads its voice list after page load; asking early makes it ready for the first reply.

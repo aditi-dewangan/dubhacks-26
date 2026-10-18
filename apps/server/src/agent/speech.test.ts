@@ -159,3 +159,38 @@ test("without a fallback, a refused mic is still reported as denied", async () =
   const controller = createSpeechController(() => ({ recognition: Refusing }));
   await assert.rejects(controller.listen(), (e: unknown) => e instanceof SpeechError && e.code === "permission_denied");
 });
+
+test("preferFallback skips the browser's recognition entirely (Chrome on iPhone)", async () => {
+  let started = 0;
+  class Never implements Recognition {
+    lang = ""; continuous = false; interimResults = false;
+    onresult: Recognition["onresult"] = null; onerror: Recognition["onerror"] = null; onend: Recognition["onend"] = null;
+    start() { started++; }
+    abort() {}
+  }
+  const controller = createSpeechController(() => ({
+    recognition: Never, preferFallback: true,
+    fallback: () => ({ result: Promise.resolve("a large fries"), cancel() {} }),
+  }));
+  assert.equal(await controller.listen(), "a large fries");
+  assert.equal(started, 0);
+});
+
+test("Safari's 'not-allowed' (needs a tap) uses the fallback once but keeps trying the browser", async () => {
+  let started = 0;
+  let remembered = 0;
+  class NeedsTap implements Recognition {
+    lang = ""; continuous = false; interimResults = false;
+    onresult: Recognition["onresult"] = null; onerror: Recognition["onerror"] = null; onend: Recognition["onend"] = null;
+    start() { started++; queueMicrotask(() => this.onerror?.({ error: "not-allowed" })); }
+    abort() {}
+  }
+  const controller = createSpeechController(() => ({
+    recognition: NeedsTap, rememberFallback() { remembered++; },
+    fallback: () => ({ result: Promise.resolve("a shake"), cancel() {} }),
+  }));
+  assert.equal(await controller.listen(), "a shake");
+  assert.equal(await controller.listen(), "a shake");
+  assert.equal(started, 2);
+  assert.equal(remembered, 0);
+});
