@@ -10,7 +10,11 @@ export interface VoiceCallbacks {
   permissionDenied?(): void;
 }
 
-/** UI adapter: socket/UI ownership stays with the frontend. Call dispose on unmount/end-session. */
+/**
+ * Continuous voice conversation adapter.
+ * Once enabled, the loop is: speak reply → listen → send → repeat.
+ * Call dispose() on unmount or session end.
+ */
 export function createAgentVoice(
   callbacks: VoiceCallbacks,
   getRate: () => number = () => 1.0,
@@ -29,19 +33,61 @@ export function createAgentVoice(
   let ended = false;
   let endReason: string | undefined;
   let completion: string | undefined;
+
   const report = (error: unknown) => {
     if (!disposed && !(error instanceof SpeechError && error.code === "cancelled")) {
       callbacks.showStatus(error instanceof SpeechError ? error.message : "Speech failed. Please use text input.");
     }
   };
+
+  // Listen for one user utterance then call sendText. Auto-called after speaking.
+  const doListen = async () => {
+    if (disposed || ended || completion || !enabled) return;
+    const current = ++generation;
+    callbacks.setListening?.(true);
+    try {
+      const text = await speech.listen();
+      if (disposed || ended || completion || current !== generation) {
+        callbacks.setListening?.(false);
+        return;
+      }
+      callbacks.setListening?.(false);
+      callbacks.showTranscript(text);
+      callbacks.sendText(text);
+    } catch (error) {
+      callbacks.setListening?.(false);
+      if (current === generation) report(error);
+    }
+  };
+
+  // Speak text and, if voice is still enabled, auto-start listening after.
+  const doSpeak = async (text: string) => {
+    if (disposed || !text.trim()) return;
+    const current = ++generation;
+    callbacks.setSpeaking?.(true);
+    try { await speech.speak(text, "en-US", getRate()); }
+    catch (error) { if (current === generation) report(error); }
+    finally { if (current === generation) callbacks.setSpeaking?.(false); }
+    // Auto-listen for the next turn
+    if (!disposed && !ended && !completion && enabled && current === generation) {
+      await doListen();
+    }
+  };
+
   return {
     support: speech.support,
-    // Enable from a user gesture. With handsFree, the mic reopens after each spoken reply.
+    // Enable from a user gesture. The conversation is continuous by default: after each spoken
+    // reply the mic reopens by itself. Disabling stops any ongoing listen/speak.
     setEnabled(value: boolean, options: { handsFree?: boolean } = {}) {
       if (disposed) return;
       enabled = value;
-      handsFree = value && Boolean(options.handsFree);
+      handsFree = value && (options.handsFree ?? true);
       if (!value) { generation++; speech.stop(); }
+    },
+
+    /** Start the listen loop immediately (call after setEnabled(true)). */
+    startListening() {
+      if (!disposed && enabled) void this.listenAndSend(true);
     },
     async listenAndSend(auto = false) {
       if (disposed || ended || completion) return;
@@ -80,11 +126,19 @@ export function createAgentVoice(
         report(error);
       }
     },
+
+    /** Typed input from text field — stops any ongoing speech/listen and sends. */
     sendTyped(text: string) {
       if (disposed || ended || completion || !text.trim()) return;
-      generation++; speech.stop();
+      generation++;
+      speech.stop();
       callbacks.sendText(text.trim());
     },
+
+    /**
+     * Called by bindVoiceSocket when an agent:message arrives.
+     * Speaks the reply, then auto-listens for the next user turn.
+     */
     async receiveReply(message: { text: string }) {
       if (disposed || ended || completion || !enabled) return;
       const current = ++generation;
@@ -111,35 +165,65 @@ export function createAgentVoice(
       const ok = () => handsFree && enabled && !disposed && !ended && !completion && after === generation;
       if (ok()) setTimeout(() => { if (ok()) void this.listenAndSend(true); }, AFTER_SPEAKING_MS);
     },
+
+    /**
+     * Called by bindVoiceSocket when kiosk:state is "complete".
+     * Announces the order number then stops the loop.
+     */
     async receiveKioskState(state: { screen: string; orderNumber?: string }) {
       if (disposed || completion || (ended && endReason !== "order_complete") ||
           state.screen !== "complete" || !state.orderNumber?.trim()) return;
       completion = `Your order is complete. Your order number is ${state.orderNumber.trim()}.`;
-      const current = ++generation;
+      generation++;
       speech.stop();
       callbacks.showStatus(completion);
       if (enabled) {
         callbacks.setSpeaking?.(true);
         try { await speech.speak(completion, "en-US", getRate()); }
-        catch (error) { if (current === generation) report(error); }
-        finally { if (current === generation) callbacks.setSpeaking?.(false); }
+        catch { /* completion announcement — ignore errors */ }
+        finally { callbacks.setSpeaking?.(false); }
+        // No auto-listen after order complete
       }
     },
-    /** Speaks text regardless of enabled state — for explicit user-triggered repeats. */
+    /**
+     * Asks one question and returns what the customer said, without sending it to the assistant
+     * (e.g. "Do you want to start ordering?" on the welcome screen). null if nothing was heard.
+     */
+    async ask(question: string): Promise<string | null> {
+      if (disposed) return null;
+      const current = ++generation;
+      callbacks.setSpeaking?.(true);
+      try { await speech.speak(question, "en-US", getRate()); }
+      catch { /* speaking failed; still listen */ }
+      finally { if (current === generation) callbacks.setSpeaking?.(false); }
+      if (current !== generation || disposed) return null;
+      await new Promise((r) => setTimeout(r, AFTER_SPEAKING_MS));
+      callbacks.setListening?.(true);
+      try { return await speech.listen(); }
+      catch { return null; }
+      finally { callbacks.setListening?.(false); }
+    },
+
+    /**
+     * One-shot feedback speak (connection confirmed, payment instructions, etc.).
+     * Does NOT start the conversation loop — use receiveReply for that.
+     */
     async speakFeedback(text: string) {
       if (disposed || !text.trim()) return;
       const current = ++generation;
       callbacks.setSpeaking?.(true);
       try { await speech.speak(text, "en-US", getRate()); }
-      catch { /* user-triggered, ignore errors */ }
+      catch { /* ignore feedback errors */ }
       finally { if (current === generation) callbacks.setSpeaking?.(false); }
     },
+
     endSession(reason?: string) {
       if (disposed) return;
-      ended = true; endReason = reason;
-      // Let an order-number announcement finish when the server closes a completed session.
+      ended = true;
+      endReason = reason;
       if (reason !== "order_complete" || !completion) { generation++; speech.stop(); }
     },
+
     dispose() { disposed = true; generation++; speech.stop(); },
   };
 }

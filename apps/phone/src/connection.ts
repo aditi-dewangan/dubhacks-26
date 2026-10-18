@@ -74,6 +74,48 @@ export interface PhoneProfile {
   returning: boolean;
   /** Their last completed order at this restaurant, if any. */
   lastOrder?: { spoken: string; total: number; at: string } | null;
+  /** What they asked to be remembered: name, speaking speed, diet, allergies. */
+  preferences?: { name?: string; speechRate?: number; diet?: string[]; allergies?: string[] };
+  /** Past orders, newest first. */
+  history?: { kind: string; place: string; at: string; total: number; spoken: string; lines: { name: string; qty: number }[] }[];
+}
+
+/** The saved profile as it is now (e.g. after the customer said "speak slower"). */
+export async function fetchProfile(): Promise<PhoneProfile | null> {
+  const token = readToken();
+  if (!token) return null;
+  try {
+    const res = await fetch(`${SERVER_URL}/api/profiles/me`, { headers: { authorization: `Bearer ${token}` } });
+    return res.ok ? ((await res.json()) as PhoneProfile) : null;
+  } catch { return null; }
+}
+
+/** Saves preferences (only the fields given). Returns the updated profile, or an error to show. */
+export async function updateProfile(prefs: NonNullable<PhoneProfile["preferences"]>): Promise<PhoneProfile | { error: string }> {
+  const token = readToken();
+  if (!token) return { error: "This phone has no profile yet. Start an order first." };
+  try {
+    const res = await fetch(`${SERVER_URL}/api/profiles/me`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+      body: JSON.stringify(prefs),
+    });
+    const body = await res.json();
+    return res.ok ? (body as PhoneProfile) : { error: (body as { message?: string }).message ?? "Couldn't save." };
+  } catch { return { error: "Couldn't reach the server." }; }
+}
+
+/** "Forget me": deletes the profile and its history on the server, and forgets the token here. */
+export async function deleteProfile(): Promise<boolean> {
+  const token = readToken();
+  try {
+    if (token) {
+      const res = await fetch(`${SERVER_URL}/api/profiles/me`, { method: "DELETE", headers: { authorization: `Bearer ${token}` } });
+      if (!res.ok && res.status !== 401) return false;
+    }
+    try { localStorage.removeItem(PROFILE_KEY); } catch { /* nothing stored */ }
+    return true;
+  } catch { return false; }
 }
 
 /**
