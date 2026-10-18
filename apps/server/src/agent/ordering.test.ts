@@ -94,3 +94,11 @@ test("duplicate modifiers and stale popup responses are rejected", () => {
     options: { drink: ["lemonade"], remove: ["no_cheese", "no_cheese"] } })!, /only once/);
   assert.match(validateActionForState("respond_to_popup", { buttonId: "popup-yes" }, fixtures.menuState)!, /no current popup/);
 });
+
+test("a transit or cinema ticket is read back by its own name, never as an unrecognized option", async () => {
+  const { checkoutReadback } = await import("./checkout.ts");
+  const text = checkoutReadback({ lines: [{ lineId: "ticket", itemId: "day_adult", name: "Day pass, Adult, Westlake to Airport",
+    qty: 2, options: { ticket: ["day"], fare: ["adult"] }, lineTotal: 12 }], subtotal: 12, tax: 0, total: 12 });
+  assert.match(text, /^2 Day pass, Adult, Westlake to Airport\. Total 12 dollars/);
+  assert.doesNotMatch(text, /unrecognized/);
+});

@@ -6,6 +6,7 @@ import { createGeminiModel, GeminiError, type ModelInput } from "./gemini.ts";
 import { createAgent, type AgentDependencies } from "./service.ts";
 import { readHistory, MAX_HISTORY_TURNS } from "./history.ts";
 import type { AgentSession } from "./loop.ts";
+import { MAX_TOOL_ROUNDS } from "./config.ts";
 
 const answer = (text: string): Content => ({ role: "model", parts: [{ text }] });
 const calls = (...functions: FunctionCall[]): Content => ({
@@ -189,15 +190,21 @@ test("unknown and direct payment calls cannot reach Bridge", async () => {
   assert.deepEqual(h.executed, []);
 });
 
-test("six model rounds is a hard cap and call/result pairs survive the fallback", async () => {
-  const h = harness(Array.from({ length: 6 }, () => () => calls(request("get_kiosk_state"))));
-  assert.match((await h.agent.handleUserMessage("a", "What's happening?")).text, /limit/);
-  assert.equal(h.seen.length, 6);
-  assert.equal(h.executed.length, 6);
+test("model rounds have a hard cap; the fallback keeps the conversation going and call/result pairs survive", async () => {
+  const h = harness(Array.from({ length: MAX_TOOL_ROUNDS }, () => () => calls(request("get_kiosk_state"))));
+  const reply = (await h.agent.handleUserMessage("a", "What's happening?")).text;
+  assert.match(reply, /What would you like to do next\?/);
+  assert.doesNotMatch(reply, /limit/);
+  assert.equal(h.seen.length, MAX_TOOL_ROUNDS);
+  assert.equal(h.executed.length, MAX_TOOL_ROUNDS);
   const saved = readHistory(h.session.history);
-  assert.equal(saved.filter((c) => c.parts?.some((p) => p.functionCall)).length, 6);
-  assert.equal(saved.filter((c) => c.parts?.some((p) => p.functionResponse)).length, 6);
-  assert.match(saved.at(-1)!.parts![0].text!, /limit/);
+  assert.equal(saved.filter((c) => c.parts?.some((p) => p.functionCall)).length, MAX_TOOL_ROUNDS);
+  assert.equal(saved.filter((c) => c.parts?.some((p) => p.functionResponse)).length, MAX_TOOL_ROUNDS);
+  assert.match(saved.at(-1)!.parts![0].text!, /What would you like to do next/);
+});
+
+test("a multi-step kiosk task (destination, ticket, fare, quantity, review) fits within the round cap", () => {
+  assert.ok(MAX_TOOL_ROUNDS >= 12);
 });
 
 test("oversized batches execute nothing and receive a result for every call", async () => {

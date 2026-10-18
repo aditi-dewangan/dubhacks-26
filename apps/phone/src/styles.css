@@ -1600,3 +1600,10 @@ body, .page {
 .drawer li { padding: 0.6rem 0.75rem; background: #fff; border: 1px solid var(--border); border-radius: 0.75rem; font-size: 0.9375rem; }
 .drawer p { color: var(--text-2); font-size: 0.9375rem; }
 .drawer-link { color: var(--indigo); font-weight: 700; min-height: 44px; display: inline-flex; align-items: center; }
+
+/* Final review: the spoken alternative to the buttons, and a check-in's details. */
+.confirm-voice-hint { color: var(--text-2); font-size: 0.95rem; margin-top: -0.25rem; }
+.confirm-details {
+  list-style: none; display: grid; gap: 0.5rem; padding: 1rem 1.1rem; border-radius: var(--radius-card);
+  background: rgba(255, 255, 255, 0.86); border: 1px solid var(--border); color: var(--text); font-size: 1rem;
+}

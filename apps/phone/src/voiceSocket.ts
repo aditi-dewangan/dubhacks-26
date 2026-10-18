@@ -2,7 +2,7 @@ import type { createAgentVoice } from "./agentSpeech.ts";
 
 interface VoiceEvents {
   "agent:message": (message: { text: string; awaitingConfirmation: boolean }) => void;
-  "kiosk:state": (state: { screen: string; orderNumber?: string }) => void;
+  "kiosk:state": (state: { screen: string; orderNumber?: string; kind?: string }) => void;
   "session:ended": (info: { reason?: string }) => void;
 }
 interface VoiceSocket {

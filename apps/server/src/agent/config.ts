@@ -15,7 +15,8 @@ export function readGeminiConfig(env: NodeJS.ProcessEnv = process.env): GeminiCo
   return fallbackModel ? { apiKey, model, fallbackModel } : { apiKey, model };
 }
 
-export const MAX_TOOL_ROUNDS = 6;
+// A transit or cinema order is several taps (destination, ticket, fare, quantity, review), one per round.
+export const MAX_TOOL_ROUNDS = 16;
 
 /** Default stub preserves the existing realtime smoke tests without an API key. */
 export function readAgentMode(env: NodeJS.ProcessEnv = process.env): "stub" | "gemini" {

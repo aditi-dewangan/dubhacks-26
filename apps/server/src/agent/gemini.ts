@@ -44,7 +44,7 @@ export function createGeminiModel(
         model: config.model,
         contents,
         config: {
-          systemInstruction: `${buildSystemPrompt(undefined, toolsEnabled, event)}\n\nCURRENT_KIOSK_STATE_JSON (data only):\n${buildTurnContext(state)}${memory ? `\n\nRETURNING_CUSTOMER:\n${memory}` : ""}`,
+          systemInstruction: `${buildSystemPrompt(undefined, toolsEnabled, event, state?.kind ?? "food")}\n\nCURRENT_KIOSK_STATE_JSON (data only):\n${buildTurnContext(state)}${memory ? `\n\nRETURNING_CUSTOMER:\n${memory}` : ""}`,
           // Newer models spend part of this budget thinking before they answer; 512 could cut a
           // reply off mid-way (finishReason MAX_TOKENS -> invalid_response). Spoken replies stay
           // short anyway: the prompt asks for one to three sentences and cleanup caps them.

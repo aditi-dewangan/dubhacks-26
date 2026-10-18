@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createSpeechController, type Recognition, SpeechError } from "../../../phone/src/speech.ts";
-import { createAgentVoice } from "../../../phone/src/agentSpeech.ts";
+import { completionMessage, createAgentVoice } from "../../../phone/src/agentSpeech.ts";
 
 function fixture() {
   const instances: FakeRecognition[] = [];
@@ -85,7 +85,7 @@ test("completion announces the actual number once and survives completed-session
   voice.sendTyped("late message");
   assert.equal(h.cancels(), cancels);
   assert.equal(h.spoken.length, 1);
-  assert.match(h.spoken[0].text, /order number is 142/);
+  assert.match(h.spoken[0].text, /order number is 1 4 2/);
   assert.equal(statuses.length, 1);
   h.spoken[0].onend?.({} as SpeechSynthesisEvent);
   await done;
@@ -231,4 +231,23 @@ test("Safari's 'not-allowed' before the first touch counts as blocked, so the Ta
   assert.deepEqual(blocked, [true]);
   voice.replaySilent(); // the touch
   assert.equal((h.spoken.at(-1) as unknown as FakeUtterance).text, "Welcome");
+});
+
+test("every kiosk reads its confirmation code out loud, character by character", () => {
+  assert.equal(completionMessage(undefined, "142"), "Your order is complete. Your order number is 1 4 2. Again, 1 4 2.");
+  assert.match(completionMessage("clinic", "A17"), /checked in\. Your number is A 1 7\. Again, A 1 7\./);
+  assert.match(completionMessage("transit", "1003"), /ticket code is 1 0 0 3\./);
+  assert.match(completionMessage("cinema", "BK-12"), /booking code is B K 1 2\./);
+});
+
+test("the code is still said after voice ordering was switched off on the payment screen", async () => {
+  const h = fixture();
+  const voice = createAgentVoice({ sendText: () => {}, showTranscript: () => {}, showStatus: () => {} }, () => 1, h.controller);
+  voice.setEnabled(true);
+  voice.setEnabled(false); // the phone does this on the paying screen
+  const done = voice.receiveKioskState({ screen: "complete", orderNumber: "1003", kind: "transit" });
+  assert.equal(h.spoken.length, 1);
+  assert.match(h.spoken[0].text, /ticket code is 1 0 0 3/);
+  h.spoken[0].onend?.({} as SpeechSynthesisEvent);
+  await done;
 });
