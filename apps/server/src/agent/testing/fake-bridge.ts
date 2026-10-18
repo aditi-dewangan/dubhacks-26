@@ -3,10 +3,15 @@ import { fixtures, menu, type KioskState } from "@kiosk-access/shared";
 import { validateAddItemInput } from "../ordering.ts";
 import type { AgentSession } from "../loop.ts";
 
+// Mirrors the real kiosk (apps/kiosk/src/store.ts): "yes" to the combo asks for its drink, from
+// the hidden combo_upgrade item, and the chosen drink adds that upgrade.
 const drinkPopup = (): NonNullable<KioskState["popup"]> => ({
   id: "popup-combo-drink", text: "Which drink would you like with your combo?",
-  buttons: menu.items.find((item) => item.id === "combo_drink")!.optionGroups[0].choices.map((choice) =>
-    ({ id: `popup-drink-${choice.id}`, label: choice.name })),
+  buttons: [
+    ...menu.items.find((item) => item.id === "combo_upgrade")!.optionGroups[0].choices.map((choice) =>
+      ({ id: `popup-drink-${choice.id}`, label: choice.name })),
+    { id: "popup-no", label: "Never mind, no combo" },
+  ],
 });
 
 export function fakeBridge(initial: KioskState = fixtures.menuState) {
@@ -56,16 +61,12 @@ export function fakeBridge(initial: KioskState = fixtures.menuState) {
       recalculate();
     } else if (name === "respond_to_popup") {
       if (!state.popup?.buttons.some((button) => button.id === input.buttonId)) return "Rejected: unavailable popup button.";
-      if (state.popup.id === "popup-combo-drink") {
-        if ((input.buttonId as string).startsWith("popup-drink-")) {
-          state.cart.lines.push({ lineId: `L${nextId++}`, itemId: "combo_drink", name: "Combo drink", qty: 1,
-            options: { drink: [(input.buttonId as string).replace("popup-drink-", "")] }, lineTotal: 0 });
-          recalculate();
-        }
-        state.popup = structuredClone(fixtures.upsellState.popup);
+      if (state.popup.id === "popup-upsell" && input.buttonId === "popup-yes") {
+        state.popup = drinkPopup();
       } else {
-        if (state.popup.id === "popup-upsell" && input.buttonId === "popup-yes") {
-          state.cart.lines.push({ lineId: `L${nextId++}`, itemId: "sauce", name: "Cane's Sauce", qty: 1, options: {}, lineTotal: 0 });
+        if (state.popup.id === "popup-combo-drink" && (input.buttonId as string).startsWith("popup-drink-")) {
+          state.cart.lines.push({ lineId: `L${nextId++}`, itemId: "combo_upgrade", name: "Combo upgrade (fries + drink)", qty: 1,
+            options: { drink: [(input.buttonId as string).replace("popup-drink-", "")] }, lineTotal: 0 });
           recalculate();
         }
         delete state.popup;

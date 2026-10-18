@@ -102,3 +102,16 @@ test("a transit or cinema ticket is read back by its own name, never as an unrec
   assert.match(text, /^2 Day pass, Adult, Westlake to Airport\. Total 12 dollars/);
   assert.doesNotMatch(text, /unrecognized/);
 });
+
+test("the test kiosk's combo popup works like the real kiosk: yes asks for a drink, the drink adds the combo", async () => {
+  const { fakeBridge } = await import("./testing/fake-bridge.ts");
+  const { fixtures } = await import("@kiosk-access/shared");
+  const b = fakeBridge(fixtures.upsellState);
+  await b.executeTool("s", "respond_to_popup", { buttonId: "popup-yes" });
+  assert.equal(b.state.popup?.id, "popup-combo-drink");
+  assert.ok(b.state.popup?.buttons.some((button) => button.id === "popup-no"));
+  await b.executeTool("s", "respond_to_popup", { buttonId: "popup-drink-lemonade" });
+  assert.equal(b.state.popup, undefined);
+  assert.deepEqual(b.state.cart.lines.map((line) => [line.itemId, line.options.drink?.[0]]),
+    [["chicken_sandwich", undefined], ["combo_upgrade", "lemonade"]]);
+});
