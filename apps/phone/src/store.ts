@@ -17,6 +17,8 @@ interface PhoneStore {
   errorMessage: string | null;
   messages: ChatMessage[];
   kioskState: KioskState | null;
+  /** Which kiosk this phone is paired with, known from the moment the session starts. */
+  kioskId: string | null;
   endReason: SessionEndReason | null;
   awaitingConfirmation: boolean;
   orderingStarted: boolean;
@@ -28,6 +30,7 @@ interface PhoneStore {
   setError(code: string, message: string): void;
   pushMessage(msg: ChatMessage): void;
   setKioskState(state: KioskState): void;
+  setKioskId(kioskId: string): void;
   setEnded(reason: SessionEndReason | null): void;
   setAwaitingConfirmation(v: boolean): void;
   setOrderingStarted(v: boolean): void;
@@ -41,6 +44,7 @@ export const usePhone = create<PhoneStore>((set) => ({
   errorMessage: null,
   messages: [],
   kioskState: null,
+  kioskId: null,
   endReason: null,
   awaitingConfirmation: false,
   orderingStarted: false,
@@ -51,6 +55,7 @@ export const usePhone = create<PhoneStore>((set) => ({
   setError: (errorCode, errorMessage) => set({ phase: "error", errorCode, errorMessage }),
   pushMessage: (msg) => set((s) => ({ messages: [...s.messages, msg] })),
   setKioskState: (kioskState) => set({ kioskState }),
+  setKioskId: (kioskId) => set({ kioskId }),
   setEnded: (endReason) => set({ phase: "ended", endReason }),
   setAwaitingConfirmation: (awaitingConfirmation) => set({ awaitingConfirmation }),
   setOrderingStarted: (orderingStarted) => set({ orderingStarted }),
