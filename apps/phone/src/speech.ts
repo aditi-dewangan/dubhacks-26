@@ -75,7 +75,7 @@ export function createSpeechController(environment: () => SpeechEnvironment = br
         try { recognition.start(); } catch { finish(undefined, new SpeechError("failed")); }
       });
     },
-    speak(text: string, lang = "en-US"): Promise<void> {
+    speak(text: string, lang = "en-US", rate = 1.0): Promise<void> {
       stopListening(); stopSpeaking();
       if (!text.trim()) return Promise.resolve();
       const { synthesis, utterance: Utterance } = environment();
@@ -95,6 +95,7 @@ export function createSpeechController(environment: () => SpeechEnvironment = br
         // Replacing speech is expected UI behavior, so resolve the old promise.
         cancelSpeaking = () => finish();
         utterance.lang = lang;
+        utterance.rate = rate;
         utterance.onend = () => finish();
         utterance.onerror = () => finish(new SpeechError("failed"));
         timer = setTimeout(() => { finish(new SpeechError("timeout")); synthesis.cancel(); }, 60_000);

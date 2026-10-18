@@ -4,10 +4,16 @@ export interface VoiceCallbacks {
   sendText(text: string): void;
   showTranscript(text: string): void;
   showStatus(message: string): void;
+  setSpeaking?(speaking: boolean): void;
+  setListening?(listening: boolean): void;
 }
 
 /** UI adapter: socket/UI ownership stays with the frontend. Call dispose on unmount/end-session. */
-export function createAgentVoice(callbacks: VoiceCallbacks, speech = createSpeechController()) {
+export function createAgentVoice(
+  callbacks: VoiceCallbacks,
+  getRate: () => number = () => 1.0,
+  speech = createSpeechController(),
+) {
   let disposed = false;
   let enabled = false;
   let generation = 0;
@@ -26,12 +32,17 @@ export function createAgentVoice(callbacks: VoiceCallbacks, speech = createSpeec
     async listenAndSend() {
       if (disposed || ended || completion) return;
       const current = ++generation;
+      callbacks.setListening?.(true);
       try {
         const text = await speech.listen();
-        if (disposed || ended || completion || current !== generation) return;
+        if (disposed || ended || completion || current !== generation) { callbacks.setListening?.(false); return; }
+        callbacks.setListening?.(false);
         callbacks.showTranscript(text);
         callbacks.sendText(text);
-      } catch (error) { if (current === generation) report(error); }
+      } catch (error) {
+        callbacks.setListening?.(false);
+        if (current === generation) report(error);
+      }
     },
     sendTyped(text: string) {
       if (disposed || ended || completion || !text.trim()) return;
@@ -41,7 +52,10 @@ export function createAgentVoice(callbacks: VoiceCallbacks, speech = createSpeec
     async receiveReply(message: { text: string }) {
       if (disposed || ended || completion || !enabled) return;
       const current = ++generation;
-      try { await speech.speak(message.text); } catch (error) { if (current === generation) report(error); }
+      callbacks.setSpeaking?.(true);
+      try { await speech.speak(message.text, "en-US", getRate()); }
+      catch (error) { if (current === generation) report(error); }
+      finally { if (current === generation) callbacks.setSpeaking?.(false); }
     },
     async receiveKioskState(state: { screen: string; orderNumber?: string }) {
       if (disposed || completion || (ended && endReason !== "order_complete") ||
@@ -51,8 +65,20 @@ export function createAgentVoice(callbacks: VoiceCallbacks, speech = createSpeec
       speech.stop();
       callbacks.showStatus(completion);
       if (enabled) {
-        try { await speech.speak(completion); } catch (error) { if (current === generation) report(error); }
+        callbacks.setSpeaking?.(true);
+        try { await speech.speak(completion, "en-US", getRate()); }
+        catch (error) { if (current === generation) report(error); }
+        finally { if (current === generation) callbacks.setSpeaking?.(false); }
       }
+    },
+    /** Speaks text regardless of enabled state — for explicit user-triggered repeats. */
+    async speakFeedback(text: string) {
+      if (disposed || !text.trim()) return;
+      const current = ++generation;
+      callbacks.setSpeaking?.(true);
+      try { await speech.speak(text, "en-US", getRate()); }
+      catch { /* user-triggered, ignore errors */ }
+      finally { if (current === generation) callbacks.setSpeaking?.(false); }
     },
     endSession(reason?: string) {
       if (disposed) return;

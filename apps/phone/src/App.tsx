@@ -4,30 +4,12 @@ import { connectSocket, createSession, parseParams } from "./connection.ts";
 import type { PhoneSocket } from "./connection.ts";
 import type { ChatMessage } from "./store.ts";
 import { usePhone } from "./store.ts";
+import { createAgentVoice } from "./agentSpeech.ts";
+import { bindVoiceSocket } from "./voiceSocket.ts";
+import { speechSupport } from "./speech.ts";
 
 let _id = 0;
 const uid = () => String(++_id);
-
-// Detect TTS support once (stable across renders)
-const hasTTS = typeof window !== "undefined" && "speechSynthesis" in window;
-
-// Minimal SpeechRecognition interface — avoids DOM lib dependency
-interface ISpeechRec {
-  continuous: boolean;
-  interimResults: boolean;
-  lang: string;
-  onstart: ((ev: Event) => void) | null;
-  onresult: ((ev: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
-  onerror: ((ev: { error: string }) => void) | null;
-  onend: ((ev: Event) => void) | null;
-  start(): void;
-  stop(): void;
-}
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const SpeechRecAPI: (new () => ISpeechRec) | undefined = typeof window !== "undefined"
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ? ((window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition)
-  : undefined;
 
 // ---- End / error display data ----
 
@@ -67,34 +49,16 @@ export function App() {
   const speechRate         = usePhone(s => s.speechRate);
 
   const socketRef          = useRef<PhoneSocket | null>(null);
+  const voiceRef           = useRef<ReturnType<typeof createAgentVoice> | null>(null);
   const [agentThinking, setAgentThinking] = useState(false);
   const [agentSpeaking, setAgentSpeaking] = useState(false);
+  const [voiceListening, setVoiceListening] = useState(false);
   const [settingsOpen,  setSettingsOpen]  = useState(false);
   const [cartReviewOpen, setCartReviewOpen] = useState(false);
-  // Screen-reader announcement when TTS is unavailable
-  const [srAnnounce, setSrAnnounce] = useState("");
 
-  // Stable refs so TTS closure always reads current values
-  const setAgentSpeakingRef = useRef(setAgentSpeaking);
-  setAgentSpeakingRef.current = setAgentSpeaking;
+  // Keep speech rate accessible to agentVoice without re-creating it on every render
   const speechRateRef = useRef(speechRate);
   speechRateRef.current = speechRate;
-
-  // TTS: speak via Web Speech API; fall back to ARIA live region only when unavailable.
-  // This prevents the page's aria-live from overlapping with speechSynthesis audio.
-  const tts = useCallback((text: string) => {
-    if (hasTTS) {
-      window.speechSynthesis.cancel();
-      const u = new SpeechSynthesisUtterance(text);
-      u.rate = speechRateRef.current;
-      setAgentSpeakingRef.current(true);
-      u.onend   = () => setAgentSpeakingRef.current(false);
-      u.onerror = () => setAgentSpeakingRef.current(false);
-      window.speechSynthesis.speak(u);
-    } else {
-      setSrAnnounce(text);
-    }
-  }, []);
 
   // Connection — runs once; no StrictMode (single-use token)
   useEffect(() => {
@@ -105,6 +69,7 @@ export function App() {
 
     let cancelled = false;
     let socket: PhoneSocket | null = null;
+    let unbindVoice: (() => void) | null = null;
 
     (async () => {
       try {
@@ -113,10 +78,31 @@ export function App() {
         socket = connectSocket(sess.sessionId, sess.sessionSecret);
         socketRef.current = socket;
 
+        // Voice controller: sendText callback emits to server and updates store.
+        // showTranscript is a no-op — sendText adds the bubble; we avoid duplicates.
+        const voice = createAgentVoice({
+          sendText: (text) => {
+            if (!socketRef.current) return;
+            socketRef.current.emit("user:message", { text });
+            usePhone.getState().pushMessage({ id: uid(), role: "user", text, awaitingConfirmation: false });
+            usePhone.getState().setAwaitingConfirmation(false);
+            setAgentThinking(true);
+          },
+          showTranscript: (_text) => { /* sendText adds the bubble */ },
+          showStatus: (_msg) => { /* showStatus errors surfaced via voiceState label */ },
+          setSpeaking: (v) => setAgentSpeaking(v),
+          setListening: (v) => setVoiceListening(v),
+        }, () => speechRateRef.current);
+        voiceRef.current = voice;
+
+        // bindVoiceSocket wires agent:message → TTS, kiosk:state → order-complete TTS,
+        // session:ended → stop speech. These run in addition to the store-update handlers below.
+        unbindVoice = bindVoiceSocket(socket, voice);
+
         socket.on("connect", () => {
           if (cancelled) return;
           store.setPhase("active");
-          tts("Connected to kiosk. Tap Start voice ordering to begin.");
+          voice.speakFeedback("Connected to kiosk. Tap Start voice ordering to begin.");
         });
         socket.on("connect_error", e => {
           if (!cancelled) store.setError("connect_failed", e.message);
@@ -126,13 +112,11 @@ export function App() {
           setAgentThinking(false);
           store.setAwaitingConfirmation(msg.awaitingConfirmation);
           store.pushMessage({ id: uid(), role: "agent", text: msg.text, awaitingConfirmation: msg.awaitingConfirmation });
-          tts(msg.text);
-          // If agent responds before user has tapped Start, move to conversation
+          // If agent responds before user tapped Start, jump straight to conversation
           if (!usePhone.getState().orderingStarted) store.setOrderingStarted(true);
         });
         socket.on("session:ended", info => {
           store.setEnded(info.reason ?? null);
-          if (hasTTS) window.speechSynthesis.cancel();
           socket!.disconnect();
         });
       } catch (err: unknown) {
@@ -145,21 +129,19 @@ export function App() {
 
     return () => {
       cancelled = true;
+      unbindVoice?.();
+      voiceRef.current?.dispose();
+      voiceRef.current = null;
       socket?.disconnect();
       socketRef.current = null;
     };
-  }, [tts]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Actions
   const sendText = useCallback((text: string) => {
     const trimmed = text.trim();
-    if (!socketRef.current || !trimmed) return;
-    socketRef.current.emit("user:message", { text: trimmed });
-    usePhone.getState().pushMessage({ id: uid(), role: "user", text: trimmed, awaitingConfirmation: false });
-    usePhone.getState().setAwaitingConfirmation(false);
-    setAgentThinking(true);
-    setAgentSpeaking(false);
-    if (hasTTS) window.speechSynthesis.cancel();
+    if (!trimmed) return;
+    voiceRef.current?.sendTyped(trimmed);
   }, []);
 
   const sendConfirm = useCallback((confirmed: boolean) => {
@@ -175,13 +157,16 @@ export function App() {
   const repeatLastMessage = useCallback(() => {
     const msgs = usePhone.getState().messages;
     const last = [...msgs].reverse().find(m => m.role === "agent");
-    if (last) tts(last.text);
-  }, [tts]);
+    if (last) voiceRef.current?.speakFeedback(last.text);
+  }, []);
 
   const startOrdering = useCallback((withVoice: boolean) => {
     usePhone.getState().setOrderingStarted(true);
-    if (withVoice) tts("Ready. Tap the microphone button and tell me what you'd like.");
-  }, [tts]);
+    if (withVoice) {
+      voiceRef.current?.setEnabled(true);
+      voiceRef.current?.speakFeedback("Ready. Tap the microphone button and tell me what you'd like.");
+    }
+  }, []);
 
   // ---- Screen routing ----
   if (phase === "init") return null;
@@ -197,7 +182,11 @@ export function App() {
 
   // phase === "active" — sub-screens by priority
   const ks = kioskState?.screen;
-  if (ks === "paying")   return <PayAtReaderScreen kioskState={kioskState!} onEnd={endSession} />;
+  if (ks === "paying")   return <PayAtReaderScreen kioskState={kioskState!} onEnd={endSession} onRepeat={() => {
+    const total = kioskState!.cart?.total;
+    const text = `Please pay at the kiosk reader${total != null ? `, total $${total.toFixed(2)}` : ""}.`;
+    voiceRef.current?.speakFeedback(text);
+  }} />;
   if (ks === "complete") return <OrderCompleteScreen kioskState={kioskState} />;
   if (awaitingConfirmation) return <ConfirmOrderScreen cart={kioskState?.cart ?? null} onConfirm={sendConfirm} />;
   if (!orderingStarted) return (
@@ -210,16 +199,14 @@ export function App() {
 
   return (
     <>
-      {/* Announcement region: used only when TTS unavailable so screen reader hears agent messages */}
-      <div role="status" aria-live="polite" aria-atomic="true" className="sr-only">
-        {srAnnounce}
-      </div>
       <ConversationScreen
         messages={messages}
         kioskState={kioskState}
         agentThinking={agentThinking}
         agentSpeaking={agentSpeaking}
+        voiceListening={voiceListening}
         onSend={sendText}
+        onMicPress={() => voiceRef.current?.listenAndSend()}
         onEnd={endSession}
         onSettings={() => setSettingsOpen(true)}
         onRepeat={repeatLastMessage}
@@ -408,7 +395,7 @@ function StartScreen({ kioskId, onStartVoice, onStartText }: {
   onStartVoice(): void;
   onStartText(): void;
 }) {
-  const hasSpeech = Boolean(SpeechRecAPI);
+  const hasSpeech = speechSupport().recognition;
   return (
     <div className="page" role="main">
       <p className="sr-only" aria-live="polite">
@@ -458,7 +445,9 @@ interface ConvProps {
   kioskState: KioskState | null;
   agentThinking: boolean;
   agentSpeaking: boolean;
+  voiceListening: boolean;
   onSend(text: string): void;
+  onMicPress(): void;
   onEnd(): void;
   onSettings(): void;
   onRepeat(): void;
@@ -466,58 +455,23 @@ interface ConvProps {
 }
 
 function ConversationScreen({
-  messages, kioskState, agentThinking, agentSpeaking,
-  onSend, onEnd, onSettings, onRepeat, onCartReview,
+  messages, kioskState, agentThinking, agentSpeaking, voiceListening,
+  onSend, onMicPress, onEnd, onSettings, onRepeat, onCartReview,
 }: ConvProps) {
   const listRef = useRef<HTMLUListElement>(null);
   const cart = kioskState?.cart;
   const cartCount = cart?.lines.reduce((s, l) => s + l.qty, 0) ?? 0;
   const hasAgentMsg = messages.some(m => m.role === "agent");
+  const hasSpeech = speechSupport().recognition;
 
-  // Derive voice button state
   type VoiceState = "idle" | "listening" | "thinking" | "speaking";
-  const [voiceState, setVoiceState] = useState<VoiceState>("idle");
-  const effectiveVoiceState: VoiceState = agentThinking ? "thinking" : agentSpeaking ? "speaking" : voiceState;
+  const effectiveVoiceState: VoiceState =
+    agentThinking ? "thinking" : agentSpeaking ? "speaking" : voiceListening ? "listening" : "idle";
 
   useEffect(() => {
     const el = listRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages, agentThinking]);
-
-  // Stop mic if agent starts thinking/speaking
-  const recRef = useRef<ISpeechRec | null>(null);
-  useEffect(() => {
-    if ((agentThinking || agentSpeaking) && voiceState === "listening") {
-      recRef.current?.stop();
-    }
-  }, [agentThinking, agentSpeaking, voiceState]);
-
-  const handleMicToggle = () => {
-    if (!SpeechRecAPI) return;
-    if (voiceState === "listening") {
-      recRef.current?.stop();
-      return;
-    }
-    const rec = new SpeechRecAPI();
-    recRef.current = rec;
-    rec.continuous = false;
-    rec.interimResults = false;
-    rec.lang = "en-US";
-    rec.onstart = () => setVoiceState("listening");
-    rec.onresult = e => {
-      const text = e.results[0]?.[0]?.transcript ?? "";
-      if (text) onSend(text);
-    };
-    rec.onerror = e => {
-      if (e.error === "not-allowed") setMicError("Microphone access denied. Use the text box below or enable it in browser settings.");
-      else setMicError("");
-      setVoiceState("idle");
-    };
-    rec.onend = () => setVoiceState("idle");
-    rec.start();
-  };
-
-  const [micError, setMicError] = useState("");
 
   const voiceBtnLabel: Record<VoiceState, string> = {
     idle:      "Microphone off",
@@ -592,17 +546,16 @@ function ConversationScreen({
           <button
             className={`voice-circle voice-${effectiveVoiceState}`}
             type="button"
-            onClick={handleMicToggle}
-            disabled={effectiveVoiceState === "thinking" || effectiveVoiceState === "speaking"}
-            aria-label={voiceState === "listening" ? "Stop recording" : "Start voice input"}
-            aria-pressed={voiceState === "listening"}
+            onClick={onMicPress}
+            disabled={!hasSpeech || effectiveVoiceState === "thinking" || effectiveVoiceState === "speaking"}
+            aria-label={voiceListening ? "Stop recording" : "Start voice input"}
+            aria-pressed={voiceListening}
           >
-            <MicIcon active={voiceState === "listening"} size={28} />
+            <MicIcon active={voiceListening} size={28} />
           </button>
           <p className="voice-status-label" role="status" aria-live="polite">
             {voiceBtnLabel[effectiveVoiceState]}
           </p>
-          {micError && <p className="voice-error-msg" role="alert">{micError}</p>}
         </div>
 
         <div className="secondary-actions">
@@ -730,7 +683,7 @@ function PriceTable({ cart }: { cart: Cart }) {
 // PayAtReaderScreen
 // ============================================================
 
-function PayAtReaderScreen({ kioskState, onEnd }: { kioskState: KioskState; onEnd(): void }) {
+function PayAtReaderScreen({ kioskState, onEnd, onRepeat }: { kioskState: KioskState; onEnd(): void; onRepeat(): void }) {
   const total = kioskState.cart?.total;
   return (
     <div className="page" role="main" aria-label="Pay at the reader">
@@ -748,11 +701,7 @@ function PayAtReaderScreen({ kioskState, onEnd }: { kioskState: KioskState; onEn
         )}
         <p>Follow the prompts on the kiosk&apos;s payment reader to complete your payment.</p>
         <div className="centred-actions">
-          <button className="btn btn-outline" type="button" onClick={() =>
-            window.speechSynthesis?.speak(new SpeechSynthesisUtterance(
-              `Please pay at the kiosk reader${total != null ? `, total $${total.toFixed(2)}` : ""}.`
-            ))
-          }>
+          <button className="btn btn-outline" type="button" onClick={onRepeat}>
             <RepeatIcon /> Repeat payment instructions
           </button>
           <button className="btn-ghost" type="button" onClick={onEnd} style={{ textAlign: "center" }}>
